@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GameType {
+  BLACKJACK
+  POKER
+}
+
+enum RoomStatus {
+  WAITING
+  ACTIVE
+  COMPLETE
+  CLOSED
+}
+
+enum ParticipationStatus {
+  WAITING
+  PLAYING
+  QUEUED
+  LEAVING
+}
+
+model Player {
+  id               String       @id @default(uuid())
+  displayName      String
+  sessionTokenHash String       @unique
+  createdAt        DateTime     @default(now())
+  lastSeenAt       DateTime     @updatedAt
+  hostedRooms      Room[]       @relation("RoomHost")
+  memberships      RoomMember[]
+}
+
+model Room {
+  id         String        @id @default(uuid())
+  code       String        @unique
+  gameType   GameType
+  status     RoomStatus    @default(WAITING)
+  hostId     String
+  host       Player        @relation("RoomHost", fields: [hostId], references: [id])
+  maxPlayers Int
+  config     Json
+  createdAt  DateTime      @default(now())
+  closedAt   DateTime?
+  members    RoomMember[]
+  games      GameSession[]
+}
+
+model RoomMember {
+  id            String              @id @default(uuid())
+  roomId        String
+  playerId      String
+  seat          Int?
+  participation ParticipationStatus @default(WAITING)
+  joinedAt      DateTime            @default(now())
+  leftAt        DateTime?
+  room     Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, playerId])
+  @@unique([roomId, seat])
+}
+
+model GameSession {
+  id        String    @id @default(uuid())
+  roomId    String
+  gameType  GameType
+  config    Json
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  room      Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
