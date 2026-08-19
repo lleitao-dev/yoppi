@@ -332,6 +332,8 @@ export class PokerEngine {
   private beginHandInternal(): void {
     const funded = this.players.filter((player) => player.stack > 0 && !this.leavingPlayerIds.has(player.playerId));
     if (funded.length < 2) this.invalid('At least two players with chips are required.');
+    const firstFunded = funded[0];
+    if (!firstFunded) this.invalid('At least two players with chips are required.');
 
     this.hand += 1;
     this.phase = 'PREFLOP';
@@ -353,8 +355,8 @@ export class PokerEngine {
 
     const previousDealer = this.dealerPlayerId;
     this.dealerPlayerId = previousDealer
-      ? this.nextFundedPlayer(previousDealer, funded)?.playerId ?? funded[0].playerId
-      : funded[0].playerId;
+      ? this.nextFundedPlayer(previousDealer, funded)?.playerId ?? firstFunded.playerId
+      : firstFunded.playerId;
 
     for (let round = 0; round < 2; round += 1) {
       for (const player of this.playersInOrderAfter(this.dealerPlayerId).filter((entry) => funded.some((f) => f.playerId === entry.playerId))) {
@@ -393,6 +395,7 @@ export class PokerEngine {
     const remaining = this.players.filter((player) => !player.folded);
     if (remaining.length !== 1) return false;
     const winner = remaining[0];
+    if (!winner) return false;
     const amount = this.players.reduce((total, player) => total + player.contributed, 0);
     winner.stack += amount;
     winner.won += amount;
@@ -463,8 +466,9 @@ export class PokerEngine {
       const eligible = pot.eligiblePlayerIds
         .map((playerId) => ({ player: this.player(playerId), hand: evaluations.get(playerId)! }))
         .filter((entry) => Boolean(entry.hand));
-      if (eligible.length === 0) continue;
-      let best = eligible[0].hand;
+      const firstEligible = eligible[0];
+      if (!firstEligible) continue;
+      let best = firstEligible.hand;
       for (const entry of eligible.slice(1)) if (compareHands(entry.hand, best) > 0) best = entry.hand;
       const winners = eligible.filter((entry) => compareHands(entry.hand, best) === 0).map((entry) => entry.player);
       const share = Math.floor(pot.amount / winners.length);

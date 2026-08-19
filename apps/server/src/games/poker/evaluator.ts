@@ -1,5 +1,5 @@
 import type { Card } from '@yoppi/game-types';
-import type { PokerHandCategory } from './protocol-types';
+import type { PokerHandCategory } from '@yoppi/protocol';
 
 const RANK_VALUE: Record<Card['rank'], number> = {
   '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
@@ -32,7 +32,7 @@ function combinations<T>(values: T[], choose: number): T[][] {
       return;
     }
     for (let index = start; index <= values.length - (choose - selected.length); index += 1) {
-      selected.push(values[index]);
+      selected.push(values[index]!);
       visit(index + 1, selected);
       selected.pop();
     }
@@ -46,38 +46,80 @@ function straightHigh(values: number[]): number | null {
   if (unique.includes(14)) unique.push(1);
   for (let index = 0; index <= unique.length - 5; index += 1) {
     const run = unique.slice(index, index + 5);
-    if (run.every((value, offset) => value === run[0] - offset)) return run[0];
+    const high = run[0];
+    if (high === undefined) continue;
+    if (run.every((value, offset) => value === high - offset)) return high;
   }
   return null;
 }
 
 export function evaluateFive(cards: Card[]): EvaluatedHand {
   if (cards.length !== 5) throw new Error('Exactly five cards are required.');
+  const firstCard = cards[0];
+  if (!firstCard) throw new Error('Exactly five cards are required.');
+
   const values = cards.map((card) => RANK_VALUE[card.rank]).sort((a, b) => b - a);
   const counts = new Map<number, number>();
   for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
   const groups = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
-  const flush = cards.every((card) => card.suit === cards[0].suit);
+  const primary = groups[0];
+  if (!primary) throw new Error('Unable to group poker hand ranks.');
+
+  const flush = cards.every((card) => card.suit === firstCard.suit);
   const straight = straightHigh(values);
 
   if (flush && straight !== null) return { category: 'STRAIGHT_FLUSH', tiebreak: [straight], cards };
-  if (groups[0][1] === 4) return { category: 'FOUR_OF_A_KIND', tiebreak: [groups[0][0], groups[1][0]], cards };
-  if (groups[0][1] === 3 && groups[1][1] === 2) return { category: 'FULL_HOUSE', tiebreak: [groups[0][0], groups[1][0]], cards };
+
+  if (primary[1] === 4) {
+    const kicker = groups[1];
+    if (!kicker) throw new Error('Four of a kind requires a kicker.');
+    return { category: 'FOUR_OF_A_KIND', tiebreak: [primary[0], kicker[0]], cards };
+  }
+
+  if (primary[1] === 3) {
+    const pair = groups.find((group) => group[1] === 2);
+    if (pair) return { category: 'FULL_HOUSE', tiebreak: [primary[0], pair[0]], cards };
+  }
+
   if (flush) return { category: 'FLUSH', tiebreak: values, cards };
   if (straight !== null) return { category: 'STRAIGHT', tiebreak: [straight], cards };
-  if (groups[0][1] === 3) {
-    const kickers = groups.filter((group) => group[1] === 1).map((group) => group[0]).sort((a, b) => b - a);
-    return { category: 'THREE_OF_A_KIND', tiebreak: [groups[0][0], ...kickers], cards };
+
+  if (primary[1] === 3) {
+    const kickers = groups
+      .filter((group) => group[1] === 1)
+      .map((group) => group[0])
+      .sort((a, b) => b - a);
+    return { category: 'THREE_OF_A_KIND', tiebreak: [primary[0], ...kickers], cards };
   }
-  const pairs = groups.filter((group) => group[1] === 2).map((group) => group[0]).sort((a, b) => b - a);
+
+  const pairs = groups
+    .filter((group) => group[1] === 2)
+    .map((group) => group[0])
+    .sort((a, b) => b - a);
+
   if (pairs.length >= 2) {
-    const kicker = groups.filter((group) => group[1] === 1).map((group) => group[0]).sort((a, b) => b - a)[0];
-    return { category: 'TWO_PAIR', tiebreak: [pairs[0], pairs[1], kicker], cards };
+    const highPair = pairs[0];
+    const lowPair = pairs[1];
+    const kicker = groups
+      .filter((group) => group[1] === 1)
+      .map((group) => group[0])
+      .sort((a, b) => b - a)[0];
+    if (highPair === undefined || lowPair === undefined || kicker === undefined) {
+      throw new Error('Unable to evaluate two-pair hand.');
+    }
+    return { category: 'TWO_PAIR', tiebreak: [highPair, lowPair, kicker], cards };
   }
+
   if (pairs.length === 1) {
-    const kickers = groups.filter((group) => group[1] === 1).map((group) => group[0]).sort((a, b) => b - a);
-    return { category: 'PAIR', tiebreak: [pairs[0], ...kickers], cards };
+    const pair = pairs[0];
+    if (pair === undefined) throw new Error('Unable to evaluate pair hand.');
+    const kickers = groups
+      .filter((group) => group[1] === 1)
+      .map((group) => group[0])
+      .sort((a, b) => b - a);
+    return { category: 'PAIR', tiebreak: [pair, ...kickers], cards };
   }
+
   return { category: 'HIGH_CARD', tiebreak: values, cards };
 }
 

@@ -8,7 +8,11 @@ export function createPokerDeck(): Card[] {
   }
   for (let index = cards.length - 1; index > 0; index -= 1) {
     const swapIndex = randomInt(0, index + 1);
-    [cards[index], cards[swapIndex]] = [cards[swapIndex], cards[index]];
+    const current = cards[index];
+    const replacement = cards[swapIndex];
+    if (!current || !replacement) throw new Error('Poker deck shuffle index out of bounds.');
+    cards[index] = replacement;
+    cards[swapIndex] = current;
   }
   return cards;
 }

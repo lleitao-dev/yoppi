@@ -248,6 +248,7 @@ export const ServerErrorCodeSchema = z.enum([
   'INVALID_ACTION',
   'INVALID_BET',
   'INSUFFICIENT_CHIPS',
+  'RATE_LIMITED',
   'INTERNAL_ERROR',
 ]);
 export type ServerErrorCode = z.infer<typeof ServerErrorCodeSchema>;

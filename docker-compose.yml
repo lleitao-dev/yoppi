@@ -19,6 +19,7 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
+      target: development
     env_file:
       - .env
     environment:
@@ -30,11 +31,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/api/v1/ready').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      target: development
     env_file:
       - .env
     environment:
@@ -42,7 +56,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - server
+      server:
+        condition: service_healthy
 
 volumes:
   postgres_data:

@@ -25,6 +25,7 @@ import { getRoomGameAdapter } from '../rooms/game-adapter';
 import { InsufficientPlayerGraceController } from '../rooms/insufficient-player-grace';
 import { reconcileRoomAtGameBoundary } from '../rooms/room-lifecycle';
 import { roomManager } from '../rooms/room-manager';
+import { FixedWindowRateLimiter } from '../security/rate-limiter';
 import {
   ensureConnectedHost,
   getRoomForMember,
@@ -84,9 +85,14 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
       origin: env.WEB_ORIGIN,
       credentials: true,
     },
+    allowRequest: (request, callback) => {
+      callback(null, request.headers.origin === env.WEB_ORIGIN);
+    },
+    maxHttpBufferSize: env.BODY_LIMIT_BYTES,
   });
 
   const pokerTurnTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const socketLimiter = new FixedWindowRateLimiter(env.SOCKET_RATE_LIMIT_MAX, env.SOCKET_RATE_LIMIT_WINDOW_MS);
 
   const graceController = new InsufficientPlayerGraceController(
     roomManager,
@@ -104,7 +110,7 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
         'Active game ended after insufficient-player grace period',
       );
     },
-    undefined,
+    env.ROOM_MINIMUM_PLAYER_GRACE_MS,
     (error, roomId) => {
       app.log.error({ error, roomId }, 'Insufficient-player grace expiration failed');
     },
@@ -163,6 +169,25 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
   });
 
   io.on('connection', (socket: YoppiSocket) => {
+    socket.use((packet, next) => {
+      const decision = socketLimiter.consume(socket.data.playerId);
+      if (decision.allowed) {
+        next();
+        return;
+      }
+
+      const error: ServerError = { code: 'RATE_LIMITED', message: 'Too many realtime actions. Try again shortly.' };
+      socket.emit('server:error', error);
+      const lastArgument: unknown = packet[packet.length - 1];
+      if (typeof lastArgument === 'function') {
+        (lastArgument as (response: CommandAck) => void)({ ok: false, error });
+      }
+      app.log.warn(
+        { event: 'socket.rate_limited', playerId: socket.data.playerId, retryAfterMs: decision.retryAfterMs },
+        'Socket rate limit exceeded',
+      );
+    });
+
     async function detachPlayerFromRoom(roomId: string, playerId: string): Promise<void> {
       const sockets = await io.in(channel(roomId)).fetchSockets();
       for (const candidate of sockets) {
@@ -569,7 +594,10 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
     graceController.dispose();
     for (const timer of pokerTurnTimers.values()) clearTimeout(timer);
     pokerTurnTimers.clear();
-    await io.close();
+    socketLimiter.clear();
+    await new Promise<void>((resolve) => {
+      io.close(() => resolve());
+    });
   });
 
   return io;

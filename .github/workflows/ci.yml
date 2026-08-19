@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.0.0 --activate
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+      - name: Formatting
+        run: pnpm format:check
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit and integration tests
+        run: pnpm test
+      - name: Build workspace
+        run: pnpm build
+
+  production-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production API image
+        run: docker build --target production -f apps/server/Dockerfile -t yoppi-server:ci .
+      - name: Build production web image
+        run: docker build --target production -f apps/web/Dockerfile -t yoppi-web:ci .
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.0.0 --activate
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Configure local environment
+        run: cp .env.example .env
+      - name: Start Yoppi
+        run: docker compose up -d --build
+      - name: Wait for readiness
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:4000/api/v1/ready >/dev/null \
+              && curl --fail --silent http://localhost:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+      - name: Multiplayer browser tests
+        run: pnpm test:e2e
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Stop Yoppi
+        if: always()
+        run: docker compose down
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.0.0 --activate
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high

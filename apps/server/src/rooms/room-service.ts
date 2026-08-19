@@ -197,6 +197,7 @@ export async function leaveRoom(roomId: string, playerId: string): Promise<Leave
   const remaining = room.members
     .filter((entry) => entry.leftAt === null && entry.playerId !== playerId)
     .sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+  const nextHostPlayerId = remaining[0]?.playerId;
 
   await prisma.$transaction(async (tx) => {
     await tx.roomMember.update({
@@ -208,8 +209,8 @@ export async function leaveRoom(roomId: string, playerId: string): Promise<Leave
         where: { id: roomId },
         data: { status: 'CLOSED', closedAt: new Date() },
       });
-    } else if (room.status === 'WAITING' && room.hostId === playerId && remaining.length > 0) {
-      await tx.room.update({ where: { id: roomId }, data: { hostId: remaining[0].playerId } });
+    } else if (room.status === 'WAITING' && room.hostId === playerId && nextHostPlayerId) {
+      await tx.room.update({ where: { id: roomId }, data: { hostId: nextHostPlayerId } });
     }
   });
 
@@ -422,6 +423,8 @@ async function startRoomByType(
     .filter((player) => player.connected && player.participation === 'WAITING')
     .map((player) => player.playerId);
 
+  const gameConfig = room.config ?? {};
+
   await prisma.$transaction(async (tx) => {
     await tx.room.update({ where: { id: roomId }, data: { status: 'ACTIVE' } });
     await tx.roomMember.updateMany({
@@ -432,7 +435,7 @@ async function startRoomByType(
       where: { roomId, leftAt: null, playerId: { notIn: playingPlayerIds } },
       data: { participation: 'QUEUED', seat: null },
     });
-    await tx.gameSession.create({ data: { roomId, gameType, config: room.config } });
+    await tx.gameSession.create({ data: { roomId, gameType, config: gameConfig } });
   });
 
   const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
