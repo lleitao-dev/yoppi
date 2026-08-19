@@ -1,39 +1,30 @@
-# Yoppi Online Casino — Hardening v0.8.1
+# Yoppi Online Casino — Deployment Baseline v0.9.0
 
-Yoppi is a multiplayer, play-money casino project with server-authoritative Blackjack and No-Limit Texas Hold'em. v0.8.1 includes the v0.8.0 stabilization release plus strict TypeScript corrections in Poker and room lifecycle code: game rules are unchanged while the application gains CI, deployment health checks, structured logging, abuse controls, graceful shutdown, and production Docker targets.
+Yoppi is a multiplayer, play-money casino platform with server-authoritative Blackjack and No-Limit Texas Hold'em. v0.9.0 takes the working/hardened MVP and adds a provider-neutral release and deployment system suitable for staging and an initial single-host production environment.
 
-## Included in v0.8.1
+## Current stack
 
-- GitHub Actions CI for formatting, linting, typechecking, tests, workspace builds, production image builds, and Playwright multiplayer coverage
-- non-blocking high-severity dependency audit job to surface dependency risk without hiding build/test results
-- structured Fastify/Pino logging with configurable log level and cookie/authorization redaction
-- stable JSON 404 and global error responses that avoid leaking internal server errors to clients
-- liveness endpoint at `/api/v1/health`
-- PostgreSQL-backed readiness endpoint at `/api/v1/ready`
-- HTTP fixed-window rate limiting with `429`, `Retry-After`, and rate-limit headers
-- Socket.IO action rate limiting per authenticated player
-- strict Socket.IO browser-origin enforcement
-- request body and Socket.IO payload size limits
-- security response headers, with HSTS enabled in production
-- configurable trusted-proxy behavior for deployment behind a reverse proxy/load balancer
-- bounded graceful shutdown on SIGINT/SIGTERM, including Socket.IO timers and Prisma disconnection
-- configurable 15-second minimum-player grace period
-- development and production Docker targets using the same Dockerfiles
-- non-root production API and web containers
-- Compose readiness gating so the web service waits for a ready API
+- TypeScript monorepo with pnpm workspaces
+- Next.js + React + Tailwind CSS frontend
+- Fastify + Socket.IO authoritative game server
+- Zod protocol/environment validation
+- PostgreSQL + Prisma persistence
+- Vitest + Playwright automated tests
+- Docker/Docker Compose local development
+- GitHub Actions CI
+- immutable OCI production images published to GHCR
+- Caddy production edge proxy with automatic HTTPS and WebSocket proxying
 
-v0.8.1 also corrects strict `noUncheckedIndexedAccess` errors in Poker deck/evaluator/engine code, room lifecycle tests, and room persistence input narrowing. No Prisma migration is required.
-
-## Current product scope
+## Product scope
 
 - guest identities using secure HTTP-only sessions
 - private rooms with room codes
-- reconnect, host transfer, deliberate leave, queued active-game joins, and game-specific admission boundaries
-- Blackjack for 1–5 players
-- Texas Hold'em for 2–6 players
-- play chips only; no deposits, purchases, withdrawals, redemption, or transferable balances
+- reconnect, active host transfer, deliberate leave, queued joins, and game-specific admission boundaries
+- server-authoritative Blackjack for 1–5 players
+- server-authoritative No-Limit Texas Hold'em for 2–6 players
+- play chips only; no deposits, purchases, withdrawals, redemption, cryptocurrency, or transferable balances
 
-## Development start
+## Local development
 
 Requirements: Docker with Docker Compose.
 
@@ -48,21 +39,17 @@ Open:
 - Liveness: http://localhost:4000/api/v1/health
 - Readiness: http://localhost:4000/api/v1/ready
 
-Expected liveness response:
+Expected:
 
 ```json
 {"status":"ok"}
 ```
 
-Expected readiness response after PostgreSQL is available:
-
 ```json
 {"status":"ready"}
 ```
 
-## Quality checks
-
-Inside a dependency-installed checkout:
+## Quality gates
 
 ```bash
 pnpm format:check
@@ -70,58 +57,77 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
-```
-
-For multiplayer browser coverage, keep Docker Compose running and use:
-
-```bash
 pnpm test:e2e
 ```
 
-GitHub Actions runs the same quality gates on pushes to `main` and on pull requests. The dependency-audit job is currently advisory because the project has not yet completed a dependency-upgrade cycle; audit findings should be reviewed before public deployment.
+GitHub Actions runs the build/test gates on `main` and pull requests. High-severity dependency audit findings remain advisory until the dedicated dependency-upgrade cycle is complete.
 
-## Production image build
+## Local production-image smoke test
 
-The ordinary Compose file selects the hot-reload `development` Docker targets. Production images can be built directly:
-
-```bash
-docker build --target production -f apps/server/Dockerfile -t yoppi-server:0.8.1 .
-docker build --target production -f apps/web/Dockerfile -t yoppi-web:0.8.1 \
-  --build-arg NEXT_PUBLIC_API_URL=https://api.example.com .
-```
-
-For a local production-mode smoke test:
+The ordinary Compose file uses hot-reload development targets. To exercise production Docker targets locally:
 
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:4000 \
   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
 ```
 
-A real deployment should supply production secrets, managed PostgreSQL, HTTPS, a custom domain, and the correct public API origin. Set `TRUST_PROXY=true` only when the API is actually behind a trusted reverse proxy/load balancer.
+The public production topology is different: browser and API traffic share one HTTPS origin behind Caddy. The web image therefore defaults to relative API/Socket.IO URLs and is portable between domains.
 
-## Hardening configuration
+## Release images
 
-Relevant environment variables:
+Tagging a release such as:
 
-```env
-LOG_LEVEL=info
-TRUST_PROXY=false
-HTTP_RATE_LIMIT_MAX=240
-HTTP_RATE_LIMIT_WINDOW_MS=60000
-SOCKET_RATE_LIMIT_MAX=120
-SOCKET_RATE_LIMIT_WINDOW_MS=10000
-BODY_LIMIT_BYTES=32768
-SHUTDOWN_GRACE_MS=10000
-ROOM_MINIMUM_PLAYER_GRACE_MS=15000
-POKER_TURN_TIMEOUT_MS=30000
+```bash
+git tag v0.9.0
+git push origin v0.9.0
 ```
 
-The in-memory rate limiters are appropriate for the current single-server architecture. They must move to a shared/distributed implementation when Yoppi adds multiple API instances.
+triggers `.github/workflows/release-images.yml`, which verifies the repository and publishes:
 
-## Persistence boundary
+```text
+ghcr.io/<owner>/yoppi-server:v0.9.0
+ghcr.io/<owner>/yoppi-web:v0.9.0
+```
 
-PostgreSQL persists room membership, participation, host ownership, and `GameSession` history. Live Blackjack and Poker state remain in the server process. A server restart during an active round/hand still loses that round/hand; durable active-game recovery remains a later reliability milestone.
+plus commit-SHA tags for traceability.
+
+## Deployment
+
+The production baseline uses:
+
+```text
+Internet
+   |
+ Caddy (HTTPS)
+   |-----------------|
+ Fastify           Next.js
+   |
+Managed PostgreSQL
+```
+
+Relevant files:
+
+```text
+docker-compose.deploy.yml
+.env.production.example
+deploy/Caddyfile
+deploy/README.md
+ops/deploy.sh
+ops/rollback.sh
+ops/smoke-test.sh
+ops/backup-db.sh
+ops/restore-db.sh
+.github/workflows/deploy.yml
+```
+
+See [deploy/README.md](deploy/README.md) for DNS, TLS, secrets, GHCR, managed PostgreSQL, staging/production GitHub environments, backups, deployment, and rollback procedures.
+
+## Operational boundary
+
+Fastify and Caddy emit structured logs to stdout/stderr for collection by the chosen hosting/logging platform. The repository does not bind v0.9 to a commercial monitoring vendor because the deployment provider has not yet been selected and live provider verification is unavailable in this session.
+
+Active Blackjack/Poker state remains in the server process. Replacing the API container interrupts active hands/rounds. v0.9 deployments therefore require a short maintenance window until durable active-game recovery or a server-drain mechanism is implemented.
 
 ## Next milestone
 
-v0.9 should focus on deployment and operations: select a container hosting platform, provision managed PostgreSQL, establish staging/production environments, configure HTTPS/domains/secrets/backups, centralize logs/error reporting, and define deployment/rollback procedures.
+After v0.9 is deployed successfully to staging, the next milestone is v1.0 public-MVP readiness: production policy/legal pages, age/play-money acknowledgement, minimal administration/moderation controls, deployment monitoring/alerts, restore drills, browser/device acceptance testing, and a controlled public launch checklist.

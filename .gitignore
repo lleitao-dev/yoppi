@@ -9,3 +9,7 @@ coverage/
 prisma/dev.db
 playwright-report/
 test-results/
+.env.production
+backups/
+.yoppi-release
+.yoppi-previous-release

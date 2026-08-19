@@ -18,7 +18,7 @@ EXPOSE 3000
 CMD ["pnpm", "--filter", "@yoppi/web", "dev"]
 
 FROM base AS build
-ARG NEXT_PUBLIC_API_URL=http://localhost:4000
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY . .
 RUN pnpm --filter @yoppi/web build

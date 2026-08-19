@@ -1,0 +1,129 @@
+name: Release images
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Immutable image tag to publish (for example v0.9.0-rc.1)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.0.0 --activate
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.0.0 --activate
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Configure local environment
+        run: cp .env.example .env
+      - name: Start Yoppi
+        run: docker compose up -d --build
+      - name: Wait for readiness
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:4000/api/v1/ready >/dev/null \
+              && curl --fail --silent http://localhost:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+      - name: Multiplayer browser tests
+        run: pnpm test:e2e
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Stop Yoppi
+        if: always()
+        run: docker compose down
+
+  publish:
+    needs: [verify, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="$GITHUB_REF_NAME"
+          fi
+          if [[ ! "$VERSION" =~ ^v[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+            echo "Invalid immutable release version: $VERSION" >&2
+            exit 2
+          fi
+          OWNER=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "owner=$OWNER" >> "$GITHUB_OUTPUT"
+      - name: Authenticate to GHCR
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build API image
+        run: |
+          docker build \
+            --target production \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --label org.opencontainers.image.version='${{ steps.meta.outputs.version }}' \
+            -f apps/server/Dockerfile \
+            -t ghcr.io/${{ steps.meta.outputs.owner }}/yoppi-server:${{ steps.meta.outputs.version }} \
+            -t ghcr.io/${{ steps.meta.outputs.owner }}/yoppi-server:sha-$GITHUB_SHA \
+            .
+      - name: Build web image
+        run: |
+          docker build \
+            --target production \
+            --build-arg NEXT_PUBLIC_API_URL= \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --label org.opencontainers.image.version='${{ steps.meta.outputs.version }}' \
+            -f apps/web/Dockerfile \
+            -t ghcr.io/${{ steps.meta.outputs.owner }}/yoppi-web:${{ steps.meta.outputs.version }} \
+            -t ghcr.io/${{ steps.meta.outputs.owner }}/yoppi-web:sha-$GITHUB_SHA \
+            .
+      - name: Push immutable images
+        run: |
+          docker push ghcr.io/${{ steps.meta.outputs.owner }}/yoppi-server:${{ steps.meta.outputs.version }}
+          docker push ghcr.io/${{ steps.meta.outputs.owner }}/yoppi-server:sha-$GITHUB_SHA
+          docker push ghcr.io/${{ steps.meta.outputs.owner }}/yoppi-web:${{ steps.meta.outputs.version }}
+          docker push ghcr.io/${{ steps.meta.outputs.owner }}/yoppi-web:sha-$GITHUB_SHA
