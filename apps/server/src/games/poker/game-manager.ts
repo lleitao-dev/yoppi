@@ -1,19 +1,18 @@
-import type { BlackjackStateView, RoomView } from '@yoppi/protocol';
-import { BlackjackEngine } from './engine';
+import type { PokerStateView, RoomView } from '@yoppi/protocol';
+import { PokerEngine } from './engine';
 
-export class BlackjackGameManager {
-  private readonly games = new Map<string, BlackjackEngine>();
+export class PokerGameManager {
+  private readonly games = new Map<string, PokerEngine>();
 
-  start(room: RoomView): BlackjackEngine {
-    if (room.gameType !== 'BLACKJACK') {
-      throw new Error('Cannot start a Blackjack engine for another game type.');
-    }
+  start(room: RoomView, turnTimeoutMs = 30_000): PokerEngine {
+    if (room.gameType !== 'POKER') throw new Error('Cannot start a Poker engine for another game type.');
     const existing = this.games.get(room.id);
     if (existing) return existing;
 
-    const engine = new BlackjackEngine({
+    const engine = new PokerEngine({
       roomId: room.id,
       hostPlayerId: room.hostPlayerId,
+      turnTimeoutMs,
       players: room.players
         .filter((player) => player.participation === 'PLAYING' && player.seat !== null)
         .map((player) => ({
@@ -60,11 +59,11 @@ export class BlackjackGameManager {
     );
   }
 
-  get(roomId: string): BlackjackEngine | undefined {
+  get(roomId: string): PokerEngine | undefined {
     return this.games.get(roomId);
   }
 
-  view(roomId: string, viewerPlayerId: string): BlackjackStateView | undefined {
+  view(roomId: string, viewerPlayerId: string): PokerStateView | undefined {
     return this.games.get(roomId)?.getView(viewerPlayerId);
   }
 
@@ -73,4 +72,4 @@ export class BlackjackGameManager {
   }
 }
 
-export const blackjackGames = new BlackjackGameManager();
+export const pokerGames = new PokerGameManager();

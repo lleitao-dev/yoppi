@@ -1,13 +1,9 @@
-# End-to-end tests
+# Yoppi end-to-end tests
 
-The Blackjack E2E scenario uses two isolated Playwright browser contexts to represent independent guest sessions.
-
-With the Docker Compose stack already running:
+Run the Docker Compose stack first, then execute:
 
 ```bash
-pnpm install
-pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-The test creates Alice and Bob, creates/joins one Blackjack room, starts the game, places both bets, completes the round, and begins the next round.
+Coverage includes independent browser contexts for Blackjack and Texas Hold'em, room creation/joining, active host transfer, reconnects, queued admission at game boundaries, and deliberate leave behavior.

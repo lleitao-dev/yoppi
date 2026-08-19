@@ -40,13 +40,6 @@ export const JoinRoomRequestSchema = z.object({
 });
 export type JoinRoomRequest = z.infer<typeof JoinRoomRequestSchema>;
 
-export const PlayerRequirementSchema = z.object({
-  minimum: z.number().int().positive(),
-  current: z.number().int().nonnegative(),
-  graceDeadline: z.string().datetime().nullable(),
-});
-export type PlayerRequirement = z.infer<typeof PlayerRequirementSchema>;
-
 export const RoomPlayerViewSchema = z.object({
   playerId: z.string().uuid(),
   displayName: z.string(),
@@ -58,6 +51,13 @@ export const RoomPlayerViewSchema = z.object({
 });
 export type RoomPlayerView = z.infer<typeof RoomPlayerViewSchema>;
 
+export const PlayerRequirementViewSchema = z.object({
+  minimum: z.number().int().positive(),
+  current: z.number().int().nonnegative(),
+  graceDeadline: z.string().datetime().nullable(),
+});
+export type PlayerRequirementView = z.infer<typeof PlayerRequirementViewSchema>;
+
 export const RoomViewSchema = z.object({
   id: z.string().uuid(),
   code: z.string(),
@@ -67,7 +67,7 @@ export const RoomViewSchema = z.object({
   minPlayers: z.number().int().positive(),
   maxPlayers: z.number().int().positive(),
   canStart: z.boolean(),
-  playerRequirement: PlayerRequirementSchema,
+  playerRequirement: PlayerRequirementViewSchema,
   revision: z.number().int().nonnegative(),
   players: z.array(RoomPlayerViewSchema),
 });
@@ -162,6 +162,77 @@ export type BlackjackBetPayload = z.infer<typeof BlackjackBetSchema>;
 export const BlackjackRoomActionSchema = z.object({ roomId: z.string().uuid() });
 export type BlackjackRoomActionPayload = z.infer<typeof BlackjackRoomActionSchema>;
 
+
+export const PokerPhaseSchema = z.enum(['PREFLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN', 'HAND_COMPLETE']);
+export type PokerPhase = z.infer<typeof PokerPhaseSchema>;
+
+export const PokerActionSchema = z.enum(['CHECK', 'CALL', 'BET', 'RAISE', 'FOLD', 'ALL_IN', 'NEXT_HAND']);
+export type PokerAction = z.infer<typeof PokerActionSchema>;
+
+export const PokerHandCategorySchema = z.enum([
+  'HIGH_CARD',
+  'PAIR',
+  'TWO_PAIR',
+  'THREE_OF_A_KIND',
+  'STRAIGHT',
+  'FLUSH',
+  'FULL_HOUSE',
+  'FOUR_OF_A_KIND',
+  'STRAIGHT_FLUSH',
+]);
+export type PokerHandCategory = z.infer<typeof PokerHandCategorySchema>;
+
+export const PokerPotViewSchema = z.object({
+  amount: z.number().int().nonnegative(),
+  eligiblePlayerIds: z.array(z.string().uuid()),
+});
+export type PokerPotView = z.infer<typeof PokerPotViewSchema>;
+
+export const PokerPlayerViewSchema = z.object({
+  playerId: z.string().uuid(),
+  displayName: z.string(),
+  seat: z.number().int().nonnegative(),
+  stack: z.number().int().nonnegative(),
+  streetBet: z.number().int().nonnegative(),
+  contributed: z.number().int().nonnegative(),
+  folded: z.boolean(),
+  allIn: z.boolean(),
+  connected: z.boolean(),
+  cards: z.tuple([CardViewSchema.nullable(), CardViewSchema.nullable()]),
+  handCategory: PokerHandCategorySchema.nullable(),
+  won: z.number().int().nonnegative(),
+});
+export type PokerPlayerView = z.infer<typeof PokerPlayerViewSchema>;
+
+export const PokerStateViewSchema = z.object({
+  roomId: z.string().uuid(),
+  hand: z.number().int().positive(),
+  revision: z.number().int().nonnegative(),
+  phase: PokerPhaseSchema,
+  dealerPlayerId: z.string().uuid(),
+  smallBlind: z.number().int().positive(),
+  bigBlind: z.number().int().positive(),
+  currentBet: z.number().int().nonnegative(),
+  minimumRaiseTo: z.number().int().positive(),
+  currentPlayerId: z.string().uuid().nullable(),
+  turnDeadline: z.string().datetime().nullable(),
+  board: z.array(CardViewSchema).max(5),
+  pots: z.array(PokerPotViewSchema),
+  players: z.array(PokerPlayerViewSchema),
+  allowedActions: z.array(PokerActionSchema),
+  callAmount: z.number().int().nonnegative(),
+});
+export type PokerStateView = z.infer<typeof PokerStateViewSchema>;
+
+export const PokerRoomActionSchema = z.object({ roomId: z.string().uuid() });
+export type PokerRoomActionPayload = z.infer<typeof PokerRoomActionSchema>;
+
+export const PokerAmountActionSchema = z.object({
+  roomId: z.string().uuid(),
+  amount: z.number().int().positive(),
+});
+export type PokerAmountActionPayload = z.infer<typeof PokerAmountActionSchema>;
+
 export const ServerErrorCodeSchema = z.enum([
   'UNAUTHENTICATED',
   'VALIDATION_ERROR',
@@ -199,6 +270,13 @@ export interface ClientToServerEvents {
   'blackjack:stand': (payload: BlackjackRoomActionPayload, callback: (response: CommandAck) => void) => void;
   'blackjack:double': (payload: BlackjackRoomActionPayload, callback: (response: CommandAck) => void) => void;
   'blackjack:nextRound': (payload: BlackjackRoomActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:check': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:call': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:bet': (payload: PokerAmountActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:raise': (payload: PokerAmountActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:fold': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:allIn': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:nextHand': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
 }
 
 export interface ServerToClientEvents {
@@ -207,5 +285,6 @@ export interface ServerToClientEvents {
   'room:playerLeft': (room: RoomView) => void;
   'room:hostChanged': (room: RoomView) => void;
   'blackjack:state': (state: BlackjackStateView) => void;
+  'poker:state': (state: PokerStateView) => void;
   'server:error': (error: ServerError) => void;
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type {
   BlackjackStateView,
+  PokerStateView,
   CommandAck,
   RoomLeaveAck,
   RoomResponse,
@@ -12,6 +13,8 @@ import type {
   SessionResponse,
 } from '@yoppi/protocol';
 import { BlackjackTable } from '@/components/blackjack-table';
+import { PokerTable } from '@/components/poker-table';
+import { InsufficientPlayerBanner } from '@/components/insufficient-player-banner';
 import { ApiError, apiFetch } from '@/lib/api';
 import { createSocket, type YoppiSocket } from '@/lib/socket';
 
@@ -26,11 +29,11 @@ export default function WaitingRoomPage() {
   const [room, setRoom] = useState<RoomView | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [blackjack, setBlackjack] = useState<BlackjackStateView | null>(null);
+  const [poker, setPoker] = useState<PokerStateView | null>(null);
   const [socket, setSocket] = useState<YoppiSocket | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [clockNow, setClockNow] = useState(() => Date.now());
 
   useEffect(() => {
     let active = true;
@@ -57,6 +60,7 @@ export default function WaitingRoomPage() {
     const realtime = createSocket();
     const updateRoom = (next: RoomView) => setRoom(next);
     const updateBlackjack = (next: BlackjackStateView) => setBlackjack(next);
+    const updatePoker = (next: PokerStateView) => setPoker(next);
     const handleError = (next: ServerError) => setError(next.message);
 
     realtime.on('connect', () => realtime.emit('room:subscribe', { roomId }));
@@ -65,6 +69,7 @@ export default function WaitingRoomPage() {
     realtime.on('room:playerLeft', updateRoom);
     realtime.on('room:hostChanged', updateRoom);
     realtime.on('blackjack:state', updateBlackjack);
+    realtime.on('poker:state', updatePoker);
     realtime.on('server:error', handleError);
     realtime.on('connect_error', (caught) => {
       setError(caught.message === 'UNAUTHENTICATED' ? 'Your guest session has expired.' : 'Real-time connection failed.');
@@ -78,14 +83,6 @@ export default function WaitingRoomPage() {
     };
   }, [roomId]);
 
-  useEffect(() => {
-    const deadline = room?.playerRequirement.graceDeadline;
-    if (!deadline) return;
-    setClockNow(Date.now());
-    const timer = window.setInterval(() => setClockNow(Date.now()), 250);
-    return () => window.clearInterval(timer);
-  }, [room?.playerRequirement.graceDeadline]);
-
   const connectedCount = useMemo(() => room?.players.filter((player) => player.connected).length ?? 0, [room]);
   const seatedCount = useMemo(
     () => room?.players.filter((player) => player.participation === 'PLAYING' && player.seat !== null).length ?? 0,
@@ -97,11 +94,6 @@ export default function WaitingRoomPage() {
     () => room?.players.filter((player) => player.connected && player.participation === 'WAITING').length ?? 0,
     [room],
   );
-  const graceSecondsRemaining = useMemo(() => {
-    const deadline = room?.playerRequirement.graceDeadline;
-    if (!deadline) return null;
-    return Math.max(0, Math.ceil((new Date(deadline).getTime() - clockNow) / 1000));
-  }, [clockNow, room?.playerRequirement.graceDeadline]);
 
   async function leaveRoom() {
     if (!socket?.connected || leaving || !room) return;
@@ -200,7 +192,21 @@ export default function WaitingRoomPage() {
                 </button>
               </>
             ) : (
-              <p className="mt-2 text-sm leading-6 text-slate-400">Texas Hold&apos;em gameplay arrives in the next game-engine tranche.</p>
+              <>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Any connected room member can start once the game minimum is met. Texas Hold&apos;em requires {room.minPlayers} players and supports up to {room.maxPlayers}. Blinds are 10/20 with 1,000 starting chips.
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {eligibleCount} connected waiting player{eligibleCount === 1 ? '' : 's'} currently eligible to start.
+                </p>
+                <button
+                  disabled={!room.canStart || !socket?.connected || starting}
+                  onClick={() => void startGame()}
+                  className="mt-5 rounded-xl bg-emerald-400 px-5 py-3 font-semibold text-emerald-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {starting ? 'Starting…' : room.canStart ? "Start Texas Hold'em" : `Need ${room.minPlayers} connected players`}
+                </button>
+              </>
             )}
           </section>
 
@@ -217,26 +223,8 @@ export default function WaitingRoomPage() {
         </>
       )}
 
-      {room.status === 'ACTIVE' && room.playerRequirement.graceDeadline && (
-        <section
-          data-testid="minimum-player-grace"
-          className="mt-8 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-5"
-        >
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">Minimum players required</p>
-          <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-lg font-medium text-amber-50">
-                {room.playerRequirement.current}/{room.playerRequirement.minimum} connected eligible players
-              </p>
-              <p className="mt-1 text-sm text-amber-100/80">
-                The game will return to the waiting room unless another player joins or reconnects in time.
-              </p>
-            </div>
-            <p className="font-mono text-3xl font-semibold text-amber-100">
-              {graceSecondsRemaining ?? 0}s
-            </p>
-          </div>
-        </section>
+      {room.status === 'ACTIVE' && (
+        <InsufficientPlayerBanner requirement={room.playerRequirement} />
       )}
 
       {room.status === 'ACTIVE' && (
@@ -248,7 +236,9 @@ export default function WaitingRoomPage() {
                 Host: {room.players.find((player) => player.playerId === room.hostPlayerId)?.displayName ?? 'Unassigned'}
               </p>
             </div>
-            <p className="text-xs text-slate-500">Minimum {room.minPlayers} · maximum {room.maxPlayers}</p>
+            <p className="text-xs text-slate-500">
+              Available {room.playerRequirement.current}/{room.playerRequirement.minimum} · maximum {room.maxPlayers}
+            </p>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {room.players.map((player) => (
@@ -259,12 +249,12 @@ export default function WaitingRoomPage() {
           </div>
           {membership?.participation === 'QUEUED' && (
             <div data-testid="queued-player-notice" className="mt-5 rounded-xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">
-              You are waiting to join the next round. You may watch the current table while your seat is pending.
+              You are waiting to join the next {room.gameType === 'POKER' ? 'hand' : 'round'}. You may watch the current table while your seat is pending.
             </div>
           )}
           {membership?.participation === 'LEAVING' && (
             <div className="mt-5 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
-              Your departure is pending and will be finalized at the end of the current round.
+              Your departure is pending and will be finalized at the end of the current {room.gameType === 'POKER' ? 'hand' : 'round'}.
             </div>
           )}
           <button
@@ -272,7 +262,7 @@ export default function WaitingRoomPage() {
             onClick={() => void leaveRoom()}
             className="mt-5 rounded-xl border border-white/15 px-5 py-3 text-sm font-medium hover:bg-white/5 disabled:opacity-50"
           >
-            {leaving ? 'Leaving…' : membership?.participation === 'PLAYING' ? 'Leave after this round' : 'Leave room'}
+            {leaving ? 'Leaving…' : membership?.participation === 'PLAYING' ? `Leave after this ${room.gameType === 'POKER' ? 'hand' : 'round'}` : 'Leave room'}
           </button>
         </section>
       )}
@@ -285,8 +275,12 @@ export default function WaitingRoomPage() {
         )
       )}
 
-      {room.status === 'ACTIVE' && room.gameType === 'POKER' && (
-        <p className="mt-10 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-amber-100">Poker gameplay is not enabled yet.</p>
+      {room.status === 'ACTIVE' && room.gameType === 'POKER' && socket && (
+        poker ? (
+          <PokerTable room={room} playerId={playerId} state={poker} socket={socket} onError={setError} />
+        ) : (
+          <p className="mt-10 text-slate-400">Loading Poker state…</p>
+        )
       )}
 
       {error && <p className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>}

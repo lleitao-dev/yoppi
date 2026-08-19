@@ -259,6 +259,42 @@ describe('BlackjackEngine', () => {
     expect(game.getView(P2).players.map((player) => player.playerId)).toEqual([P2]);
   });
 
+  it('sits out a disconnected player during betting and restores eligibility on reconnect', () => {
+    const game = engine([], { twoPlayers: true });
+    expect(game.playerDisconnected(P2)).toBe(true);
+    expect(game.getView(P2).players.find((player) => player.playerId === P2)?.status).toBe('OUT');
+    expect(game.playerConnected(P2)).toBe(true);
+    expect(game.getView(P2).players.find((player) => player.playerId === P2)?.status).toBe('BETTING');
+  });
+
+  it('carries a disconnected placed bet into the round as a standing hand', () => {
+    const game = engine(
+      [card('10'), card('9'), card('8'), card('7'), card('6'), card('7'), card('2')],
+      { twoPlayers: true },
+    );
+    game.placeBet(P1, 10);
+    expect(game.playerDisconnected(P1)).toBe(false);
+    game.placeBet(P2, 10);
+    expect(game.getView(P2).players.find((player) => player.playerId === P1)?.status).toBe('STANDING');
+    game.stand(P2);
+    expect(game.getView(P2).phase).toBe('ROUND_COMPLETE');
+  });
+
+  it('stands a disconnected future-turn player so the round cannot deadlock later', () => {
+    const game = engine(
+      [card('10'), card('9'), card('8'), card('7'), card('6'), card('7'), card('2')],
+      { twoPlayers: true },
+    );
+    game.placeBet(P1, 10);
+    game.placeBet(P2, 10);
+    expect(game.getView(P1).currentPlayerId).toBe(P1);
+
+    expect(game.playerDisconnected(P2)).toBe(true);
+    expect(game.getView(P1).players.find((player) => player.playerId === P2)?.status).toBe('STANDING');
+    game.stand(P1);
+    expect(game.getView(P1).phase).toBe('ROUND_COMPLETE');
+  });
+
   it('rejects participant synchronization in the middle of a round', () => {
     const game = engine([card('10'), card('9'), card('7'), card('8')]);
     game.placeBet(P1, 10);

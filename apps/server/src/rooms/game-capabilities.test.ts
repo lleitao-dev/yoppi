@@ -32,12 +32,12 @@ describe('game capabilities', () => {
     ).toBe(false);
   });
 
-  it('keeps Poker start disabled until its engine exists', () => {
+  it('allows Poker to start with two connected waiting players', () => {
     expect(
       canStartGame('POKER', 'WAITING', [
         player(),
         player({ playerId: '00000000-0000-4000-8000-000000000003', isHost: false }),
       ]),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

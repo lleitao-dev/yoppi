@@ -47,6 +47,7 @@ describe('RoomManager', () => {
     expect(changed[0].revision).toBe(2);
     expect(changed[0].players[0].connected).toBe(false);
     expect(changed[0].canStart).toBe(false);
+    expect(changed[0].playerRequirement.current).toBe(0);
   });
 
   it('keeps a player connected while another socket remains', () => {
@@ -70,9 +71,8 @@ describe('RoomManager', () => {
     expect(disconnected?.players[0].connected).toBe(false);
   });
 
-  it('counts connected playing and queued members toward an active game requirement', () => {
+  it('counts connected playing and queued members toward an active-game requirement', () => {
     const manager = new RoomManager();
-    const secondPlayerId = '00000000-0000-4000-8000-000000000003';
     manager.hydrate({
       ...baseRoom(),
       gameType: 'POKER',
@@ -80,9 +80,9 @@ describe('RoomManager', () => {
       minPlayers: 2,
       maxPlayers: 6,
       players: [
-        { ...baseRoom().players[0]!, participation: 'PLAYING' },
+        { ...baseRoom().players[0], participation: 'PLAYING' },
         {
-          playerId: secondPlayerId,
+          playerId: '00000000-0000-4000-8000-000000000003',
           displayName: 'Queued',
           seat: null,
           connected: false,
@@ -94,22 +94,9 @@ describe('RoomManager', () => {
     });
 
     manager.connect(roomId, playerId, 'socket-1');
-    const withQueuedArrival = manager.connect(roomId, secondPlayerId, 'socket-2');
-    expect(withQueuedArrival?.playerRequirement.current).toBe(2);
+    expect(manager.get(roomId)?.playerRequirement.current).toBe(1);
+    manager.connect(roomId, '00000000-0000-4000-8000-000000000003', 'socket-2');
+    expect(manager.get(roomId)?.playerRequirement.current).toBe(2);
   });
 
-  it('stores a server-owned grace deadline in derived room state', () => {
-    const manager = new RoomManager();
-    manager.hydrate({
-      ...baseRoom(),
-      status: 'ACTIVE',
-      players: [{ ...baseRoom().players[0]!, participation: 'PLAYING' }],
-    });
-    const deadline = '2026-08-18T07:00:15.000Z';
-
-    const started = manager.setGraceDeadline(roomId, deadline);
-    expect(started?.playerRequirement.graceDeadline).toBe(deadline);
-    const cancelled = manager.setGraceDeadline(roomId, null);
-    expect(cancelled?.playerRequirement.graceDeadline).toBeNull();
-  });
 });

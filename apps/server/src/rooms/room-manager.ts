@@ -3,18 +3,19 @@ import { canStartGame } from './game-capabilities';
 
 type HydratedRoom = Omit<RoomView, 'revision' | 'canStart' | 'playerRequirement'>;
 
-const ACTIVE_REQUIREMENT_PARTICIPATION = new Set<ParticipationStatus>(['PLAYING', 'QUEUED']);
+function countsTowardRequirement(status: RoomView['status'], participation: ParticipationStatus): boolean {
+  if (status === 'WAITING') return participation === 'WAITING';
+  if (status === 'ACTIVE') return participation === 'PLAYING' || participation === 'QUEUED';
+  return false;
+}
 
 export class RoomManager {
   private readonly rooms = new Map<string, RoomView>();
   private readonly connections = new Map<string, Map<string, Set<string>>>();
-  private readonly graceDeadlines = new Map<string, string>();
 
   hydrate(room: HydratedRoom): RoomView {
     const previous = this.rooms.get(room.id);
     const connections = this.connections.get(room.id);
-    if (room.status !== 'ACTIVE') this.graceDeadlines.delete(room.id);
-
     const next = this.withDerivedState({
       ...room,
       revision: previous?.revision ?? 0,
@@ -22,7 +23,7 @@ export class RoomManager {
       playerRequirement: {
         minimum: room.minPlayers,
         current: 0,
-        graceDeadline: null,
+        graceDeadline: room.status === 'ACTIVE' ? (previous?.playerRequirement.graceDeadline ?? null) : null,
       },
       players: room.players.map((player) => ({
         ...player,
@@ -99,17 +100,17 @@ export class RoomManager {
     return next;
   }
 
-  setGraceDeadline(roomId: string, deadline: string | null): RoomView | undefined {
+  setGraceDeadline(roomId: string, graceDeadline: string | null): RoomView | undefined {
     const room = this.rooms.get(roomId);
     if (!room) return undefined;
-
-    const currentDeadline = this.graceDeadlines.get(roomId) ?? null;
-    if (currentDeadline === deadline) return room;
-
-    if (deadline === null) this.graceDeadlines.delete(roomId);
-    else this.graceDeadlines.set(roomId, deadline);
-
-    const next = this.bump(room);
+    if (room.playerRequirement.graceDeadline === graceDeadline) return room;
+    const next = this.bump({
+      ...room,
+      playerRequirement: {
+        ...room.playerRequirement,
+        graceDeadline,
+      },
+    });
     this.rooms.set(roomId, next);
     return next;
   }
@@ -134,20 +135,16 @@ export class RoomManager {
   }
 
   private withDerivedState(room: RoomView): RoomView {
-    const current = room.players.filter((player) => {
-      if (!player.connected) return false;
-      if (room.status === 'WAITING') return player.participation === 'WAITING';
-      if (room.status === 'ACTIVE') return ACTIVE_REQUIREMENT_PARTICIPATION.has(player.participation);
-      return false;
-    }).length;
-
+    const current = room.players.filter(
+      (player) => player.connected && countsTowardRequirement(room.status, player.participation),
+    ).length;
     return {
       ...room,
       canStart: canStartGame(room.gameType, room.status, room.players),
       playerRequirement: {
         minimum: room.minPlayers,
         current,
-        graceDeadline: room.status === 'ACTIVE' ? (this.graceDeadlines.get(room.id) ?? null) : null,
+        graceDeadline: room.status === 'ACTIVE' ? room.playerRequirement.graceDeadline : null,
       },
     };
   }

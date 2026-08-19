@@ -1,26 +1,58 @@
-# Yoppi Online Casino — Minimum-Player Grace v0.6.0
+# Yoppi Online Casino — Texas Hold'em v0.7.0
 
-Yoppi is a multiplayer, play-money casino project. v0.6.0 completes the generic active-room lifecycle foundation by adding a server-authoritative minimum-player requirement and a 15-second recovery window before an under-populated active game is returned to its waiting room.
+Yoppi is a multiplayer, play-money casino project. v0.7.0 adds the first complete Texas Hold'em game on top of the generic room lifecycle introduced in v0.4–v0.6.
 
-## Included in v0.6.0
+## Included in v0.7.0
 
-- `RoomView.playerRequirement` exposes the game minimum, current connected eligible count, and server-owned grace deadline
-- active requirement counting includes connected `PLAYING` and `QUEUED` members and excludes `LEAVING` members
-- queued arrivals may satisfy the room minimum immediately while still waiting for the game-specific admission boundary
-- a dedicated server controller starts a 15-second timer when an active room falls below its game minimum
-- reconnecting or joining before the deadline cancels the timer
-- the client renders the deadline as a live countdown; the browser clock is informational only
-- timer expiry ends open `GameSession` records and returns remaining members to `WAITING`
-- `LEAVING` memberships are finalized during an insufficient-player reset
-- remaining seats are normalized before the room returns to the lobby
-- the active game adapter is stopped after timeout; Blackjack discards its in-memory engine
-- rooms with no remaining members close instead of returning to an empty lobby
-- host ownership remains valid through the timeout reset and connected-host transfer rules still apply
-- timer duration is configurable with `ROOM_MINIMUM_PLAYER_GRACE_MS`, defaulting to `15000`
-- unit tests cover deadline creation, expiry, and cancellation from a queued arrival
-- E2E coverage verifies Blackjack timeout after disconnect and cancellation after reconnect
+- server-authoritative No-Limit Texas Hold'em for 2–6 players
+- 1,000 starting play chips with 10/20 blinds and no antes
+- cryptographically shuffled 52-card deck using Node `crypto.randomInt()` and Fisher-Yates
+- heads-up and multi-player dealer/blind rotation
+- pre-flop, flop, turn, river, showdown, and hand-complete state transitions
+- check, call, bet, raise, fold, and all-in actions
+- minimum bet and minimum full-raise enforcement
+- short all-in handling without incorrectly reopening betting
+- side-pot construction and multi-pot showdown settlement
+- five-from-seven hand evaluator with tie/kicker resolution
+- private hole-card projection: opponents' cards are never sent before showdown
+- server-owned 30-second action deadline; timeout checks when legal and folds when facing a bet
+- deliberate leave folds the player safely and removes them at `HAND_COMPLETE`
+- disconnected players retain their seat and may reconnect during the current hand
+- active-room joins enter `QUEUED` and are admitted only between hands
+- active host transfer is synchronized into the Poker engine
+- generic game adapter now supports both Blackjack and Poker
+- Poker table UI with board, hole cards, stacks, bets, pot, dealer marker, action controls, and turn countdown
+- unit coverage for deck integrity, hand evaluation, side pots, turn order, street progression, privacy, timeout behavior, and lifecycle synchronization
+- Playwright coverage for a two-player Poker hand and queued third-player admission
 
-No Prisma migration is required for v0.6.0. The grace deadline is transient active-game state owned by the server process; existing room and game-session fields already support the timeout transition.
+No Prisma migration is required for v0.7.0. The existing room, membership, participation, and `GameSession` models already support Poker.
+
+## Poker rules in this MVP
+
+- variant: No-Limit Texas Hold'em
+- players: 2–6
+- starting chips: 1,000
+- small blind: 10
+- big blind: 20
+- antes: none
+- action timer: 30 seconds
+- supported actions: check, call, bet, raise, fold, all-in
+- queued entrants join at `HAND_COMPLETE`
+- deliberate leavers fold immediately and are removed at `HAND_COMPLETE`
+
+Deferred Poker features include tournaments, paid/rebuy flows, straddles, custom blind schedules, spectators, rabbit hunting, and persistent hand history.
+
+## Room lifecycle integration
+
+Poker uses the same lifecycle system as Blackjack:
+
+- any connected member may start once the game minimum is met
+- existing members can reconnect to active rooms
+- host ownership transfers during active games
+- new active-room entrants wait in `QUEUED`
+- Poker defines `HAND_COMPLETE` as its safe admission/removal boundary
+- the 15-second insufficient-player grace controller uses Poker's minimum of two available players
+- if the grace deadline expires, the active game session ends and surviving members return to the waiting room
 
 ## Start locally
 
@@ -29,12 +61,6 @@ Requirements: Docker with Docker Compose.
 ```bash
 cp .env.example .env
 docker compose up --build
-```
-
-Existing `.env` files from v0.5.0 continue to work because the server defaults `ROOM_MINIMUM_PLAYER_GRACE_MS` to 15 seconds. Add this line if you want the setting to be explicit:
-
-```env
-ROOM_MINIMUM_PLAYER_GRACE_MS=15000
 ```
 
 Open:
@@ -47,40 +73,6 @@ Expected health response:
 ```json
 {"status":"ok"}
 ```
-
-## Grace-period behavior
-
-For an active room, Yoppi evaluates:
-
-```text
-current connected eligible players >= game minimum
-```
-
-Eligible active members are connected players whose participation is `PLAYING` or `QUEUED`.
-
-If the requirement becomes false:
-
-```text
-ACTIVE
-  -> start 15 second server timer
-  -> broadcast graceDeadline
-  -> player reconnects / queued player arrives -> cancel timer
-  -> deadline expires -> end game session -> WAITING
-```
-
-For Blackjack the minimum is one, so the grace period normally starts only when the last eligible player disconnects or departs. Poker will use the same controller with a minimum of two.
-
-## Manual Blackjack smoke test
-
-1. Create a Blackjack room as a single guest.
-2. Start Blackjack.
-3. Close the active table tab.
-4. Reconnect to the room using the same guest session within 15 seconds and confirm the room is still `ACTIVE`.
-5. Close the table again and remain disconnected for more than 15 seconds.
-6. Re-enter the room using its six-character code.
-7. Confirm the room is now a `WAITING` room and Blackjack can be started again.
-
-For games with a minimum above one, connected players see an on-screen countdown while the grace period is active.
 
 ## Automated tests
 
@@ -97,12 +89,12 @@ For browser coverage, keep Docker Compose running and use:
 pnpm test:e2e
 ```
 
-The new grace E2E cases intentionally wait across the real 15-second server deadline.
+The Poker action timer can be changed for development with:
 
-## Active-game persistence boundary
+```env
+POKER_TURN_TIMEOUT_MS=30000
+```
 
-The grace timer, live Blackjack engine, shoe, cards, balances, and turn state remain in the application server process. PostgreSQL persists room membership and completed/ended `GameSession` timing. A server restart during an active game still does not restore live game state; restart recovery remains a later reliability milestone.
+## Persistence boundary
 
-## Next milestone
-
-With room membership, queueing, host transfer, active departure, safe admission boundaries, and minimum-player recovery now defined generically, the next game-engine milestone can begin: No-Limit Texas Hold'em Poker.
+PostgreSQL persists room membership, participation, host ownership, and `GameSession` history. Live Blackjack and Poker state remain in the server process. A server restart during an active game still loses the current round/hand; durable active-game recovery remains a later reliability milestone.

@@ -8,7 +8,7 @@ export interface GameCapabilities {
 
 const CAPABILITIES: Record<GameType, GameCapabilities> = {
   BLACKJACK: { minPlayers: 1, maxPlayers: 5, playable: true },
-  POKER: { minPlayers: 2, maxPlayers: 6, playable: false },
+  POKER: { minPlayers: 2, maxPlayers: 6, playable: true },
 };
 
 export function getGameCapabilities(gameType: GameType): GameCapabilities {

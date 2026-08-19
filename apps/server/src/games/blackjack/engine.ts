@@ -58,6 +58,7 @@ export class BlackjackEngine {
   private readonly deckCount: number;
   private readonly startingChips: number;
   private readonly leavingPlayerIds = new Set<string>();
+  private readonly disconnectedPlayerIds = new Set<string>();
   private shoe: Card[];
   private players: PlayerState[];
   private dealerCards: Card[] = [];
@@ -176,9 +177,10 @@ export class BlackjackEngine {
       player.cards = [];
       player.result = null;
       player.net = 0;
-      player.status = player.chips >= this.minBet ? 'BETTING' : 'OUT';
+      player.status = player.chips >= this.minBet && !this.disconnectedPlayerIds.has(player.playerId) ? 'BETTING' : 'OUT';
     }
     this.bump();
+    this.maybeDealInitialCards();
   }
 
   requestLeave(playerId: string): boolean {
@@ -203,6 +205,48 @@ export class BlackjackEngine {
 
     this.bump();
     return true;
+  }
+
+  playerDisconnected(playerId: string): boolean {
+    const player = this.players.find((candidate) => candidate.playerId === playerId);
+    if (!player || this.disconnectedPlayerIds.has(playerId)) return false;
+
+    this.disconnectedPlayerIds.add(playerId);
+
+    if (this.phase === 'BETTING' && player.bet === 0 && player.status === 'BETTING') {
+      player.status = 'OUT';
+      this.bump();
+      this.maybeDealInitialCards();
+      return true;
+    }
+
+    if (this.phase === 'PLAYER_TURNS' && player.status === 'PLAYING') {
+      player.status = 'STANDING';
+      if (this.currentPlayerId === playerId) this.advanceTurn();
+      else this.bump();
+      return true;
+    }
+
+    return false;
+  }
+
+  playerConnected(playerId: string): boolean {
+    const player = this.players.find((candidate) => candidate.playerId === playerId);
+    if (!player || !this.disconnectedPlayerIds.delete(playerId)) return false;
+
+    if (
+      this.phase === 'BETTING' &&
+      !this.leavingPlayerIds.has(playerId) &&
+      player.bet === 0 &&
+      player.status === 'OUT' &&
+      player.chips >= this.minBet
+    ) {
+      player.status = 'BETTING';
+      this.bump();
+      return true;
+    }
+
+    return false;
   }
 
   isAdmissionBoundary(): boolean {
@@ -247,6 +291,9 @@ export class BlackjackEngine {
     for (const leavingId of [...this.leavingPlayerIds]) {
       if (!desired.has(leavingId)) this.leavingPlayerIds.delete(leavingId);
     }
+    for (const disconnectedId of [...this.disconnectedPlayerIds]) {
+      if (!desired.has(disconnectedId)) this.disconnectedPlayerIds.delete(disconnectedId);
+    }
 
     if (changed) this.bump();
   }
@@ -258,9 +305,7 @@ export class BlackjackEngine {
   }
 
   autoStand(playerId: string): boolean {
-    if (this.phase !== 'PLAYER_TURNS' || this.currentPlayerId !== playerId) return false;
-    this.stand(playerId);
-    return true;
+    return this.playerDisconnected(playerId);
   }
 
   getView(viewerPlayerId: string): BlackjackStateView {
@@ -341,7 +386,11 @@ export class BlackjackEngine {
 
     for (const player of active) {
       const blackjack = valueHand(player.cards).blackjack;
-      player.status = blackjack ? 'BLACKJACK' : this.leavingPlayerIds.has(player.playerId) ? 'STANDING' : 'PLAYING';
+      player.status = blackjack
+        ? 'BLACKJACK'
+        : this.leavingPlayerIds.has(player.playerId) || this.disconnectedPlayerIds.has(player.playerId)
+          ? 'STANDING'
+          : 'PLAYING';
     }
 
     if (valueHand(this.dealerCards).blackjack) {

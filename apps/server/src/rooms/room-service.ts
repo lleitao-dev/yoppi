@@ -293,6 +293,74 @@ export async function applyBoundaryMembership(roomId: string): Promise<BoundaryM
   };
 }
 
+export interface InsufficientPlayerTimeoutResult {
+  room: RoomView | null;
+  closed: boolean;
+}
+
+export async function resetRoomAfterInsufficientPlayers(
+  roomId: string,
+): Promise<InsufficientPlayerTimeoutResult> {
+  const room = await prisma.room.findUnique({ where: { id: roomId }, include: roomInclude });
+  if (!room) return { room: null, closed: true };
+  if (room.status !== 'ACTIVE') return { room: toRoomView(room), closed: room.status === 'CLOSED' };
+
+  const activeMembers = room.members
+    .filter((member) => member.leftAt === null)
+    .sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+  const leaving = activeMembers.filter((member) => member.participation === 'LEAVING');
+  const survivors = activeMembers.filter((member) => member.participation !== 'LEAVING');
+  const endedAt = new Date();
+  const nextHostId = survivors.some((member) => member.playerId === room.hostId)
+    ? room.hostId
+    : (survivors[0]?.playerId ?? room.hostId);
+
+  await prisma.$transaction(async (tx) => {
+    if (leaving.length > 0) {
+      await tx.roomMember.updateMany({
+        where: { roomId, leftAt: null, participation: 'LEAVING' },
+        data: { leftAt: endedAt, seat: null },
+      });
+    }
+
+    if (survivors.length > 0) {
+      await tx.roomMember.updateMany({
+        where: { id: { in: survivors.map((member) => member.id) } },
+        data: { participation: 'WAITING', seat: null },
+      });
+      for (const [seat, member] of survivors.entries()) {
+        await tx.roomMember.update({
+          where: { id: member.id },
+          data: { seat },
+        });
+      }
+    }
+
+    await tx.gameSession.updateMany({
+      where: { roomId, endedAt: null },
+      data: { endedAt },
+    });
+
+    if (survivors.length === 0) {
+      await tx.room.update({
+        where: { id: roomId },
+        data: { status: 'CLOSED', closedAt: endedAt },
+      });
+    } else {
+      await tx.room.update({
+        where: { id: roomId },
+        data: { status: 'WAITING', closedAt: null, hostId: nextHostId },
+      });
+    }
+  });
+
+  for (const member of leaving) roomManager.removePlayer(roomId, member.playerId);
+
+  const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
+  const view = toRoomView(updated);
+  return { room: roomManager.bumpRoom(roomId) ?? view, closed: updated.status === 'CLOSED' };
+}
+
 export interface HostTransferResult {
   room: RoomView;
   changed: boolean;
@@ -324,14 +392,18 @@ export async function ensureConnectedHost(roomId: string): Promise<HostTransferR
   return { room: roomManager.bumpRoom(roomId) ?? view, changed: true };
 }
 
-export async function startBlackjackRoom(roomId: string, playerId: string): Promise<RoomView> {
+async function startRoomByType(
+  roomId: string,
+  playerId: string,
+  gameType: GameType,
+): Promise<RoomView> {
   const room = await prisma.room.findUnique({ where: { id: roomId }, include: roomInclude });
   if (!room) throw new RoomServiceError('ROOM_NOT_FOUND', 'Room not found.');
 
   const member = room.members.find((entry) => entry.playerId === playerId && entry.leftAt === null);
   if (!member) throw new RoomServiceError('NOT_ROOM_MEMBER', 'You are not a member of this room.');
-  if (room.gameType !== 'BLACKJACK') {
-    throw new RoomServiceError('WRONG_GAME_TYPE', 'This game type is not playable yet.');
+  if (room.gameType !== gameType) {
+    throw new RoomServiceError('WRONG_GAME_TYPE', `This room is configured for ${room.gameType.toLowerCase()}.`);
   }
   if (room.status !== 'WAITING') {
     throw new RoomServiceError('ROOM_ALREADY_STARTED', 'This room has already started.');
@@ -339,9 +411,10 @@ export async function startBlackjackRoom(roomId: string, playerId: string): Prom
 
   const current = toRoomView(room);
   if (!current.canStart) {
+    const label = gameType === 'BLACKJACK' ? 'Blackjack' : "Texas Hold'em";
     throw new RoomServiceError(
       'INSUFFICIENT_PLAYERS',
-      `Blackjack requires at least ${current.minPlayers} connected player${current.minPlayers === 1 ? '' : 's'}.`,
+      `${label} requires at least ${current.minPlayers} connected player${current.minPlayers === 1 ? '' : 's'}.`,
     );
   }
 
@@ -359,7 +432,7 @@ export async function startBlackjackRoom(roomId: string, playerId: string): Prom
       where: { roomId, leftAt: null, playerId: { notIn: playingPlayerIds } },
       data: { participation: 'QUEUED', seat: null },
     });
-    await tx.gameSession.create({ data: { roomId, gameType: 'BLACKJACK', config: room.config } });
+    await tx.gameSession.create({ data: { roomId, gameType, config: room.config } });
   });
 
   const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
@@ -367,70 +440,12 @@ export async function startBlackjackRoom(roomId: string, playerId: string): Prom
   return roomManager.bumpRoom(roomId) ?? view;
 }
 
-export async function resetActiveRoomForInsufficientPlayers(
-  roomId: string,
-): Promise<RoomView | null> {
-  const room = await prisma.room.findUnique({ where: { id: roomId }, include: roomInclude });
-  if (!room) return null;
-  if (room.status !== 'ACTIVE') return toRoomView(room);
+export function startBlackjackRoom(roomId: string, playerId: string): Promise<RoomView> {
+  return startRoomByType(roomId, playerId, 'BLACKJACK');
+}
 
-  const activeMembers = room.members
-    .filter((member) => member.leftAt === null)
-    .sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
-  const leaving = activeMembers.filter((member) => member.participation === 'LEAVING');
-  const remaining = activeMembers.filter((member) => member.participation !== 'LEAVING');
-  const now = new Date();
-
-  await prisma.$transaction(async (tx) => {
-    if (leaving.length > 0) {
-      await tx.roomMember.updateMany({
-        where: { roomId, leftAt: null, participation: 'LEAVING' },
-        data: { leftAt: now, seat: null },
-      });
-    }
-
-    await tx.gameSession.updateMany({
-      where: { roomId, endedAt: null },
-      data: { endedAt: now },
-    });
-
-    if (remaining.length === 0) {
-      await tx.room.update({
-        where: { id: roomId },
-        data: { status: 'CLOSED', closedAt: now },
-      });
-      return;
-    }
-
-    const remainingPlayerIds = remaining.map((member) => member.playerId);
-    await tx.roomMember.updateMany({
-      where: { roomId, leftAt: null, playerId: { in: remainingPlayerIds } },
-      data: { participation: 'WAITING', seat: null },
-    });
-
-    for (const [seat, member] of remaining.entries()) {
-      await tx.roomMember.update({
-        where: { id: member.id },
-        data: { seat },
-      });
-    }
-
-    const hostStillPresent = remaining.some((member) => member.playerId === room.hostId);
-    await tx.room.update({
-      where: { id: roomId },
-      data: {
-        status: 'WAITING',
-        closedAt: null,
-        hostId: hostStillPresent ? room.hostId : remaining[0]!.playerId,
-      },
-    });
-  });
-
-  for (const member of leaving) roomManager.removePlayer(roomId, member.playerId);
-
-  const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
-  const view = toRoomView(updated);
-  return roomManager.bumpRoom(roomId) ?? view;
+export function startPokerRoom(roomId: string, playerId: string): Promise<RoomView> {
+  return startRoomByType(roomId, playerId, 'POKER');
 }
 
 export class RoomServiceError extends Error {

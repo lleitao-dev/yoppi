@@ -10,6 +10,8 @@ import {
   BlackjackBetSchema,
   BlackjackRoomActionSchema,
   GameStartSchema,
+  PokerAmountActionSchema,
+  PokerRoomActionSchema,
   RoomLeaveSchema,
   RoomSubscribeSchema,
 } from '@yoppi/protocol';
@@ -17,17 +19,20 @@ import { getPlayerFromCookieHeader } from '../auth/session';
 import type { AppEnv } from '../config/env';
 import { BlackjackEngineError, type BlackjackEngine } from '../games/blackjack/engine';
 import { blackjackGames } from '../games/blackjack/game-manager';
+import { PokerEngineError, type PokerEngine } from '../games/poker/engine';
+import { pokerGames } from '../games/poker/game-manager';
 import { getRoomGameAdapter } from '../rooms/game-adapter';
+import { InsufficientPlayerGraceController } from '../rooms/insufficient-player-grace';
 import { reconcileRoomAtGameBoundary } from '../rooms/room-lifecycle';
-import { MinimumPlayerGraceController } from '../rooms/minimum-player-grace';
 import { roomManager } from '../rooms/room-manager';
 import {
   ensureConnectedHost,
   getRoomForMember,
   leaveRoom,
-  resetActiveRoomForInsufficientPlayers,
+  resetRoomAfterInsufficientPlayers,
   RoomServiceError,
   startBlackjackRoom,
+  startPokerRoom,
 } from '../rooms/room-service';
 
 interface SocketData {
@@ -44,7 +49,7 @@ function channel(roomId: string): string {
 }
 
 function toCommandError(error: unknown, fallback: string): ServerError {
-  if (error instanceof BlackjackEngineError || error instanceof RoomServiceError) {
+  if (error instanceof BlackjackEngineError || error instanceof PokerEngineError || error instanceof RoomServiceError) {
     return { code: error.code, message: error.message };
   }
   return { code: 'INTERNAL_ERROR', message: fallback };
@@ -59,6 +64,20 @@ async function emitBlackjackState(io: YoppiSocketServer, roomId: string): Promis
   }
 }
 
+async function emitPokerState(io: YoppiSocketServer, roomId: string): Promise<void> {
+  const engine = pokerGames.get(roomId);
+  if (!engine) return;
+  const sockets = await io.in(channel(roomId)).fetchSockets();
+  for (const socket of sockets) {
+    socket.emit('poker:state', engine.getView(socket.data.playerId));
+  }
+}
+
+async function emitGameState(io: YoppiSocketServer, roomId: string): Promise<void> {
+  if (blackjackGames.get(roomId)) await emitBlackjackState(io, roomId);
+  if (pokerGames.get(roomId)) await emitPokerState(io, roomId);
+}
+
 export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSocketServer {
   const io: YoppiSocketServer = new Server(app.server, {
     cors: {
@@ -67,37 +86,66 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
     },
   });
 
-  const minimumPlayerGrace = new MinimumPlayerGraceController(roomManager, {
-    graceMs: env.ROOM_MINIMUM_PLAYER_GRACE_MS,
-    onExpired: async (roomId) => {
-      const before = roomManager.get(roomId);
-      if (!before || before.status !== 'ACTIVE') return;
-      if (before.playerRequirement.current >= before.playerRequirement.minimum) return;
+  const pokerTurnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-      const adapter = getRoomGameAdapter(before.gameType);
-      const resetRoom = await resetActiveRoomForInsufficientPlayers(roomId);
-      adapter?.stop(roomId);
-
-      if (!resetRoom) return;
-      const hostResult = await ensureConnectedHost(roomId);
-      const currentRoom = hostResult?.room ?? resetRoom;
-      if (hostResult?.changed) {
-        io.to(channel(roomId)).emit('room:hostChanged', currentRoom);
-      }
-      io.to(channel(roomId)).emit('room:state', currentRoom);
+  const graceController = new InsufficientPlayerGraceController(
+    roomManager,
+    async (roomId) => {
+      const activeRoom = roomManager.get(roomId);
+      const adapter = activeRoom ? getRoomGameAdapter(activeRoom.gameType) : null;
+      const result = await resetRoomAfterInsufficientPlayers(roomId);
+      adapter?.terminate(roomId);
+      const pokerTimer = pokerTurnTimers.get(roomId);
+      if (pokerTimer) clearTimeout(pokerTimer);
+      pokerTurnTimers.delete(roomId);
+      if (result.room) io.to(channel(roomId)).emit('room:state', result.room);
+      app.log.info(
+        { roomId, closed: result.closed },
+        'Active game ended after insufficient-player grace period',
+      );
     },
-    onError: (error, roomId) => {
-      app.log.error({ error, roomId }, 'Minimum-player grace expiration failed');
+    undefined,
+    (error, roomId) => {
+      app.log.error({ error, roomId }, 'Insufficient-player grace expiration failed');
     },
-  });
+  );
 
-  function reconcileMinimumPlayers(roomId: string): boolean {
-    const result = minimumPlayerGrace.reconcile(roomId);
-    if (result.state !== 'UNCHANGED' && result.room) {
-      io.to(channel(roomId)).emit('room:state', result.room);
-      return true;
-    }
-    return false;
+  function reconcileGrace(roomId: string): boolean {
+    const result = graceController.reconcile(roomId);
+    if (result.changed && result.room) io.to(channel(roomId)).emit('room:state', result.room);
+    return result.changed;
+  }
+
+
+  function schedulePokerTurn(roomId: string): void {
+    const existing = pokerTurnTimers.get(roomId);
+    if (existing) clearTimeout(existing);
+    pokerTurnTimers.delete(roomId);
+
+    const engine = pokerGames.get(roomId);
+    const deadline = engine?.getTurnDeadline();
+    if (!engine || !deadline) return;
+
+    const delay = Math.max(0, new Date(deadline).getTime() - Date.now()) + 10;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const current = pokerGames.get(roomId);
+          if (!current) return;
+          const changed = current.timeoutCurrentPlayer();
+          if (changed) {
+            const boundary = await reconcileRoomAtGameBoundary(roomId);
+            if (boundary.changed && boundary.room) io.to(channel(roomId)).emit('room:state', boundary.room);
+            reconcileGrace(roomId);
+            await emitPokerState(io, roomId);
+          }
+          schedulePokerTurn(roomId);
+        } catch (error) {
+          app.log.error({ error, roomId }, 'Poker turn timeout failed');
+        }
+      })();
+    }, delay);
+    pokerTurnTimers.set(roomId, timer);
   }
 
   io.use(async (socket, next) => {
@@ -156,7 +204,7 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
       try {
         command(engine);
         await reconcileBoundary(roomId);
-        reconcileMinimumPlayers(roomId);
+        reconcileGrace(roomId);
         await emitBlackjackState(io, roomId);
         callback({ ok: true });
       } catch (caught) {
@@ -164,6 +212,43 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
           app.log.error({ error: caught, roomId, playerId: socket.data.playerId }, 'Blackjack command failed');
         }
         const error = toCommandError(caught, 'Unable to process the Blackjack action.');
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+      }
+    }
+
+    async function executePoker(
+      roomId: string,
+      callback: (response: CommandAck) => void,
+      command: (engine: PokerEngine) => void,
+    ): Promise<void> {
+      if (!socket.data.subscribedRooms.has(roomId)) {
+        const error: ServerError = { code: 'NOT_ROOM_MEMBER', message: 'Subscribe to this room before playing.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+
+      const engine = pokerGames.get(roomId);
+      if (!engine) {
+        const error: ServerError = { code: 'GAME_NOT_FOUND', message: 'The Poker game is not active.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+
+      try {
+        command(engine);
+        await reconcileBoundary(roomId);
+        reconcileGrace(roomId);
+        await emitPokerState(io, roomId);
+        schedulePokerTurn(roomId);
+        callback({ ok: true });
+      } catch (caught) {
+        if (!(caught instanceof PokerEngineError)) {
+          app.log.error({ error: caught, roomId, playerId: socket.data.playerId }, 'Poker command failed');
+        }
+        const error = toCommandError(caught, 'Unable to process the Poker action.');
         socket.emit('server:error', error);
         callback({ ok: false, error });
       }
@@ -186,26 +271,31 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
         await socket.join(channel(room.id));
         socket.data.subscribedRooms.add(room.id);
         let currentRoom = roomManager.connect(room.id, socket.data.playerId, socket.id) ?? room;
+        const adapter = currentRoom.status === 'ACTIVE' ? getRoomGameAdapter(currentRoom.gameType) : null;
+        const engineConnectionChanged = adapter?.playerConnected(room.id, socket.data.playerId) ?? false;
 
         const hostResult = await ensureConnectedHost(room.id);
         if (hostResult) currentRoom = hostResult.room;
         if (hostResult?.changed) {
-          blackjackGames.setHost(room.id, currentRoom.hostPlayerId);
+          adapter?.setHost(room.id, currentRoom.hostPlayerId);
           io.to(channel(room.id)).emit('room:hostChanged', currentRoom);
         }
 
         const boundary = await reconcileRoomAtGameBoundary(room.id);
         if (boundary.room) currentRoom = boundary.room;
-        const grace = minimumPlayerGrace.reconcile(room.id);
+        const grace = graceController.reconcile(room.id);
         if (grace.room) currentRoom = grace.room;
 
         socket.emit('room:state', currentRoom);
         socket.to(channel(room.id)).emit('room:playerJoined', currentRoom);
-        if (boundary.changed || grace.state !== 'UNCHANGED') io.to(channel(room.id)).emit('room:state', currentRoom);
+        if (boundary.changed || grace.changed) io.to(channel(room.id)).emit('room:state', currentRoom);
 
         const blackjackState = blackjackGames.view(room.id, socket.data.playerId);
         if (blackjackState) socket.emit('blackjack:state', blackjackState);
-        if (boundary.changed) await emitBlackjackState(io, room.id);
+        const pokerState = pokerGames.view(room.id, socket.data.playerId);
+        if (pokerState) socket.emit('poker:state', pokerState);
+        if (boundary.changed || engineConnectionChanged) await emitGameState(io, room.id);
+        if (pokerState) schedulePokerTurn(room.id);
       } catch (error) {
         app.log.error({ error, roomId: parsed.data.roomId }, 'Room subscription failed');
         socket.emit('server:error', { code: 'INTERNAL_ERROR', message: 'Unable to subscribe to the room.' });
@@ -235,13 +325,14 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
 
         const hostResult = await ensureConnectedHost(parsed.data.roomId);
         if (hostResult?.changed) {
-          blackjackGames.setHost(parsed.data.roomId, hostResult.room.hostPlayerId);
+          adapter?.setHost(parsed.data.roomId, hostResult.room.hostPlayerId);
           io.to(channel(parsed.data.roomId)).emit('room:hostChanged', hostResult.room);
         }
 
         const boundary = await reconcileRoomAtGameBoundary(parsed.data.roomId);
-        const grace = minimumPlayerGrace.reconcile(parsed.data.roomId);
-        const currentRoom = grace.room ?? boundary.room ?? hostResult?.room ?? roomManager.get(parsed.data.roomId) ?? leaveResult.room;
+        let currentRoom = boundary.room ?? hostResult?.room ?? roomManager.get(parsed.data.roomId) ?? leaveResult.room;
+        const grace = graceController.reconcile(parsed.data.roomId);
+        if (grace.room) currentRoom = grace.room;
 
         if (currentRoom) {
           if (leaveResult.disposition === 'LEFT' || boundary.removedPlayerIds.includes(socket.data.playerId)) {
@@ -251,8 +342,9 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
           }
         }
         if (engineChanged || boundary.changed || hostResult?.changed) {
-          await emitBlackjackState(io, parsed.data.roomId);
+          await emitGameState(io, parsed.data.roomId);
         }
+        if (before.gameType === 'POKER') schedulePokerTurn(parsed.data.roomId);
         callback({ ok: true });
       } catch (error) {
         if (!(error instanceof RoomServiceError)) {
@@ -279,11 +371,15 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
         }
         const waitingRoom = await getRoomForMember(parsed.data.roomId, socket.data.playerId);
         if (!waitingRoom) throw new RoomServiceError('NOT_ROOM_MEMBER', 'You are not a member of this room.');
-        const room = await startBlackjackRoom(parsed.data.roomId, socket.data.playerId);
-        blackjackGames.start(room);
-        const grace = minimumPlayerGrace.reconcile(room.id);
+        const room = waitingRoom.gameType === 'BLACKJACK'
+          ? await startBlackjackRoom(parsed.data.roomId, socket.data.playerId)
+          : await startPokerRoom(parsed.data.roomId, socket.data.playerId);
+        if (room.gameType === 'BLACKJACK') blackjackGames.start(room);
+        else pokerGames.start(room, env.POKER_TURN_TIMEOUT_MS);
+        const grace = graceController.reconcile(room.id);
         io.to(channel(room.id)).emit('room:state', grace.room ?? room);
-        await emitBlackjackState(io, room.id);
+        await emitGameState(io, room.id);
+        if (room.gameType === 'POKER') schedulePokerTurn(room.id);
         callback({ ok: true });
       } catch (caught) {
         if (!(caught instanceof RoomServiceError)) {
@@ -352,6 +448,83 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
       await executeBlackjack(parsed.data.roomId, callback, (engine) => engine.beginNextRound(socket.data.playerId));
     });
 
+    socket.on('poker:check', async (payload, callback) => {
+      const parsed = PokerRoomActionSchema.safeParse(payload);
+      if (!parsed.success) {
+        const error: ServerError = { code: 'VALIDATION_ERROR', message: 'Invalid Poker action.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+      await executePoker(parsed.data.roomId, callback, (engine) => engine.check(socket.data.playerId));
+    });
+
+    socket.on('poker:call', async (payload, callback) => {
+      const parsed = PokerRoomActionSchema.safeParse(payload);
+      if (!parsed.success) {
+        const error: ServerError = { code: 'VALIDATION_ERROR', message: 'Invalid Poker action.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+      await executePoker(parsed.data.roomId, callback, (engine) => engine.call(socket.data.playerId));
+    });
+
+    socket.on('poker:bet', async (payload, callback) => {
+      const parsed = PokerAmountActionSchema.safeParse(payload);
+      if (!parsed.success) {
+        const error: ServerError = { code: 'VALIDATION_ERROR', message: 'Invalid Poker bet.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+      await executePoker(parsed.data.roomId, callback, (engine) => engine.bet(socket.data.playerId, parsed.data.amount));
+    });
+
+    socket.on('poker:raise', async (payload, callback) => {
+      const parsed = PokerAmountActionSchema.safeParse(payload);
+      if (!parsed.success) {
+        const error: ServerError = { code: 'VALIDATION_ERROR', message: 'Invalid Poker raise.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+      await executePoker(parsed.data.roomId, callback, (engine) => engine.raise(socket.data.playerId, parsed.data.amount));
+    });
+
+    socket.on('poker:fold', async (payload, callback) => {
+      const parsed = PokerRoomActionSchema.safeParse(payload);
+      if (!parsed.success) {
+        const error: ServerError = { code: 'VALIDATION_ERROR', message: 'Invalid Poker action.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+      await executePoker(parsed.data.roomId, callback, (engine) => engine.fold(socket.data.playerId));
+    });
+
+    socket.on('poker:allIn', async (payload, callback) => {
+      const parsed = PokerRoomActionSchema.safeParse(payload);
+      if (!parsed.success) {
+        const error: ServerError = { code: 'VALIDATION_ERROR', message: 'Invalid Poker action.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+      await executePoker(parsed.data.roomId, callback, (engine) => engine.allIn(socket.data.playerId));
+    });
+
+    socket.on('poker:nextHand', async (payload, callback) => {
+      const parsed = PokerRoomActionSchema.safeParse(payload);
+      if (!parsed.success) {
+        const error: ServerError = { code: 'VALIDATION_ERROR', message: 'Invalid Poker action.' };
+        socket.emit('server:error', error);
+        callback({ ok: false, error });
+        return;
+      }
+      await executePoker(parsed.data.roomId, callback, (engine) => engine.beginNextHand(socket.data.playerId));
+    });
+
     socket.on('disconnect', () => {
       void (async () => {
         const changedRooms = roomManager.disconnectSocket(socket.id);
@@ -361,32 +534,31 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
           );
           const finalSocketDisconnected = Boolean(disconnectedPlayer && !disconnectedPlayer.connected);
 
-          let blackjackChanged = false;
+          let gameChanged = false;
           if (finalSocketDisconnected && disconnectedPlayer?.participation === 'PLAYING') {
-            blackjackChanged = blackjackGames.get(disconnectedRoom.id)?.autoStand(socket.data.playerId) ?? false;
+            const adapter = getRoomGameAdapter(disconnectedRoom.gameType);
+            gameChanged = adapter?.playerDisconnected(disconnectedRoom.id, socket.data.playerId) ?? false;
           }
 
-          let boundaryChanged = false;
           try {
             const hostResult = await ensureConnectedHost(disconnectedRoom.id);
             const room = hostResult?.room ?? disconnectedRoom;
             if (hostResult?.changed) {
-              blackjackGames.setHost(room.id, room.hostPlayerId);
+              getRoomGameAdapter(room.gameType).setHost(room.id, room.hostPlayerId);
               io.to(channel(room.id)).emit('room:hostChanged', room);
-              blackjackChanged = true;
+              gameChanged = true;
             } else {
               io.to(channel(room.id)).emit('room:state', room);
             }
 
-            boundaryChanged = await reconcileBoundary(room.id);
+            const boundaryChanged = await reconcileBoundary(room.id);
+            const graceChanged = reconcileGrace(room.id);
+            if (gameChanged || boundaryChanged || graceChanged) await emitGameState(io, room.id);
+            if (room.gameType === 'POKER') schedulePokerTurn(room.id);
           } catch (error) {
-            app.log.error({ error, roomId: disconnectedRoom.id }, 'Host transfer after disconnect failed');
+            app.log.error({ error, roomId: disconnectedRoom.id }, 'Room lifecycle update after disconnect failed');
             io.to(channel(disconnectedRoom.id)).emit('room:state', disconnectedRoom);
-          }
-
-          const graceChanged = reconcileMinimumPlayers(disconnectedRoom.id);
-          if (blackjackChanged || boundaryChanged || graceChanged) {
-            await emitBlackjackState(io, disconnectedRoom.id);
+            if (gameChanged) await emitGameState(io, disconnectedRoom.id);
           }
         }
       })();
@@ -394,7 +566,9 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
   });
 
   app.addHook('onClose', async () => {
-    minimumPlayerGrace.close();
+    graceController.dispose();
+    for (const timer of pokerTurnTimers.values()) clearTimeout(timer);
+    pokerTurnTimers.clear();
     await io.close();
   });
 
