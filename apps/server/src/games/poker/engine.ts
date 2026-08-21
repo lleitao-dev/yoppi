@@ -40,7 +40,10 @@ interface PlayerState extends PokerEnginePlayer {
 }
 
 export class PokerEngineError extends Error {
-  constructor(public readonly code: ServerErrorCode, message: string) {
+  constructor(
+    public readonly code: ServerErrorCode,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -90,7 +93,10 @@ export class PokerEngine {
         folded: false,
         allIn: false,
         connected: true,
-        cards: [{ suit: 'CLUBS', rank: '2' }, { suit: 'CLUBS', rank: '2' }],
+        cards: [
+          { suit: 'CLUBS', rank: '2' },
+          { suit: 'CLUBS', rank: '2' },
+        ],
         handCategory: null,
         won: 0,
       }));
@@ -116,8 +122,10 @@ export class PokerEngine {
   bet(playerId: string, amount: number): void {
     const player = this.assertTurn(playerId);
     if (this.currentBet !== 0) this.invalid('Use raise when a bet is already open.');
-    if (!Number.isInteger(amount) || amount <= 0 || amount > player.stack) this.invalid('Invalid bet amount.');
-    if (amount < this.bigBlind && amount !== player.stack) this.invalid(`Minimum bet is ${this.bigBlind}.`);
+    if (!Number.isInteger(amount) || amount <= 0 || amount > player.stack)
+      this.invalid('Invalid bet amount.');
+    if (amount < this.bigBlind && amount !== player.stack)
+      this.invalid(`Minimum bet is ${this.bigBlind}.`);
     this.commit(player, amount);
     this.currentBet = player.streetBet;
     this.minRaiseSize = Math.max(this.bigBlind, amount);
@@ -129,7 +137,8 @@ export class PokerEngine {
     const player = this.assertTurn(playerId);
     if (this.currentBet <= 0) this.invalid('Use bet to open the betting.');
     if (this.acted.has(playerId)) this.invalid('Betting has not been reopened for another raise.');
-    if (!Number.isInteger(raiseTo) || raiseTo <= this.currentBet) this.invalid('Raise must exceed the current bet.');
+    if (!Number.isInteger(raiseTo) || raiseTo <= this.currentBet)
+      this.invalid('Raise must exceed the current bet.');
     const cost = raiseTo - player.streetBet;
     if (cost > player.stack) this.invalid('Insufficient chips for that raise.');
     const raiseSize = raiseTo - this.currentBet;
@@ -181,14 +190,19 @@ export class PokerEngine {
   beginNextHand(playerId: string): void {
     if (playerId !== this.hostPlayerId) this.invalid('Only the room host can start the next hand.');
     if (this.phase !== 'HAND_COMPLETE') this.invalid('The current hand is still in progress.');
-    if (this.players.filter((player) => player.stack > 0 && !this.leavingPlayerIds.has(player.playerId)).length < 2) {
+    if (
+      this.players.filter(
+        (player) => player.stack > 0 && !this.leavingPlayerIds.has(player.playerId),
+      ).length < 2
+    ) {
       this.invalid('At least two players with chips are required for another hand.');
     }
     this.beginHandInternal();
   }
 
   timeoutCurrentPlayer(now = Date.now()): boolean {
-    if (!this.currentPlayerId || !this.turnDeadline || now < new Date(this.turnDeadline).getTime()) return false;
+    if (!this.currentPlayerId || !this.turnDeadline || now < new Date(this.turnDeadline).getTime())
+      return false;
     const player = this.players.find((entry) => entry.playerId === this.currentPlayerId);
     if (!player) return false;
     if (player.streetBet === this.currentBet) this.check(player.playerId);
@@ -236,7 +250,8 @@ export class PokerEngine {
   }
 
   syncPlayers(players: PokerEnginePlayer[]): void {
-    if (!this.isAdmissionBoundary()) throw new Error('Poker participants can only change between hands.');
+    if (!this.isAdmissionBoundary())
+      throw new Error('Poker participants can only change between hands.');
     const desired = new Map(players.map((player) => [player.playerId, player]));
     const existing = new Map(this.players.map((player) => [player.playerId, player]));
     const next: PlayerState[] = [];
@@ -258,7 +273,10 @@ export class PokerEngine {
           folded: false,
           allIn: false,
           connected: true,
-          cards: [{ suit: 'CLUBS', rank: '2' }, { suit: 'CLUBS', rank: '2' }],
+          cards: [
+            { suit: 'CLUBS', rank: '2' },
+            { suit: 'CLUBS', rank: '2' },
+          ],
           handCategory: null,
           won: 0,
         });
@@ -266,7 +284,8 @@ export class PokerEngine {
     }
     if (this.players.some((player) => !desired.has(player.playerId))) changed = true;
     this.players = next.sort((a, b) => a.seat - b.seat);
-    for (const playerId of [...this.leavingPlayerIds]) if (!desired.has(playerId)) this.leavingPlayerIds.delete(playerId);
+    for (const playerId of [...this.leavingPlayerIds])
+      if (!desired.has(playerId)) this.leavingPlayerIds.delete(playerId);
     if (changed) this.bump();
   }
 
@@ -287,9 +306,10 @@ export class PokerEngine {
   getView(viewerPlayerId: string): PokerStateView {
     const reveal = this.phase === 'SHOWDOWN' || this.phase === 'HAND_COMPLETE';
     const viewer = this.players.find((player) => player.playerId === viewerPlayerId);
-    const callAmount = viewer && this.currentPlayerId === viewerPlayerId
-      ? Math.min(viewer.stack, Math.max(0, this.currentBet - viewer.streetBet))
-      : 0;
+    const callAmount =
+      viewer && this.currentPlayerId === viewerPlayerId
+        ? Math.min(viewer.stack, Math.max(0, this.currentBet - viewer.streetBet))
+        : 0;
     return {
       roomId: this.roomId,
       hand: this.hand,
@@ -303,11 +323,13 @@ export class PokerEngine {
       currentPlayerId: this.currentPlayerId,
       turnDeadline: this.turnDeadline,
       board: [...this.board],
-      pots: buildSidePots(this.players.map((player) => ({
-        playerId: player.playerId,
-        amount: player.contributed,
-        folded: player.folded,
-      }))),
+      pots: buildSidePots(
+        this.players.map((player) => ({
+          playerId: player.playerId,
+          amount: player.contributed,
+          folded: player.folded,
+        })),
+      ),
       players: this.players.map((player) => ({
         playerId: player.playerId,
         displayName: player.displayName,
@@ -318,9 +340,10 @@ export class PokerEngine {
         folded: player.folded,
         allIn: player.allIn,
         connected: player.connected,
-        cards: viewerPlayerId === player.playerId || (reveal && !player.folded)
-          ? [player.cards[0], player.cards[1]]
-          : [null, null],
+        cards:
+          viewerPlayerId === player.playerId || (reveal && !player.folded)
+            ? [player.cards[0], player.cards[1]]
+            : [null, null],
         handCategory: reveal && !player.folded ? player.handCategory : null,
         won: player.won,
       })),
@@ -330,7 +353,9 @@ export class PokerEngine {
   }
 
   private beginHandInternal(): void {
-    const funded = this.players.filter((player) => player.stack > 0 && !this.leavingPlayerIds.has(player.playerId));
+    const funded = this.players.filter(
+      (player) => player.stack > 0 && !this.leavingPlayerIds.has(player.playerId),
+    );
     if (funded.length < 2) this.invalid('At least two players with chips are required.');
     const firstFunded = funded[0];
     if (!firstFunded) this.invalid('At least two players with chips are required.');
@@ -355,18 +380,21 @@ export class PokerEngine {
 
     const previousDealer = this.dealerPlayerId;
     this.dealerPlayerId = previousDealer
-      ? this.nextFundedPlayer(previousDealer, funded)?.playerId ?? firstFunded.playerId
+      ? (this.nextFundedPlayer(previousDealer, funded)?.playerId ?? firstFunded.playerId)
       : firstFunded.playerId;
 
     for (let round = 0; round < 2; round += 1) {
-      for (const player of this.playersInOrderAfter(this.dealerPlayerId).filter((entry) => funded.some((f) => f.playerId === entry.playerId))) {
+      for (const player of this.playersInOrderAfter(this.dealerPlayerId).filter((entry) =>
+        funded.some((f) => f.playerId === entry.playerId),
+      )) {
         if (round === 0) player.cards = [this.draw(), player.cards[1]];
         else player.cards = [player.cards[0], this.draw()];
       }
     }
 
     const dealer = this.player(this.dealerPlayerId);
-    const smallBlindPlayer = funded.length === 2 ? dealer : this.nextFundedPlayer(dealer.playerId, funded)!;
+    const smallBlindPlayer =
+      funded.length === 2 ? dealer : this.nextFundedPlayer(dealer.playerId, funded)!;
     const bigBlindPlayer = this.nextFundedPlayer(smallBlindPlayer.playerId, funded)!;
     this.postBlind(smallBlindPlayer, this.smallBlind);
     this.postBlind(bigBlindPlayer, this.bigBlind);
@@ -409,7 +437,9 @@ export class PokerEngine {
   private streetComplete(): boolean {
     const decisionPlayers = this.players.filter((player) => !player.folded && !player.allIn);
     if (decisionPlayers.length === 0) return true;
-    return decisionPlayers.every((player) => player.streetBet === this.currentBet && this.acted.has(player.playerId));
+    return decisionPlayers.every(
+      (player) => player.streetBet === this.currentBet && this.acted.has(player.playerId),
+    );
   }
 
   private advanceStreet(): void {
@@ -456,11 +486,13 @@ export class PokerEngine {
       player.handCategory = evaluated.category;
     }
 
-    const pots = buildSidePots(this.players.map((player) => ({
-      playerId: player.playerId,
-      amount: player.contributed,
-      folded: player.folded,
-    })));
+    const pots = buildSidePots(
+      this.players.map((player) => ({
+        playerId: player.playerId,
+        amount: player.contributed,
+        folded: player.folded,
+      })),
+    );
 
     for (const pot of pots) {
       const eligible = pot.eligiblePlayerIds
@@ -469,11 +501,16 @@ export class PokerEngine {
       const firstEligible = eligible[0];
       if (!firstEligible) continue;
       let best = firstEligible.hand;
-      for (const entry of eligible.slice(1)) if (compareHands(entry.hand, best) > 0) best = entry.hand;
-      const winners = eligible.filter((entry) => compareHands(entry.hand, best) === 0).map((entry) => entry.player);
+      for (const entry of eligible.slice(1))
+        if (compareHands(entry.hand, best) > 0) best = entry.hand;
+      const winners = eligible
+        .filter((entry) => compareHands(entry.hand, best) === 0)
+        .map((entry) => entry.player);
       const share = Math.floor(pot.amount / winners.length);
       let remainder = pot.amount % winners.length;
-      const ordered = this.playersInOrderAfter(this.dealerPlayerId).filter((candidate) => winners.some((winner) => winner.playerId === candidate.playerId));
+      const ordered = this.playersInOrderAfter(this.dealerPlayerId).filter((candidate) =>
+        winners.some((winner) => winner.playerId === candidate.playerId),
+      );
       for (const winner of ordered) {
         const award = share + (remainder > 0 ? 1 : 0);
         remainder = Math.max(0, remainder - 1);
@@ -487,8 +524,10 @@ export class PokerEngine {
   }
 
   private assertTurn(playerId: string): PlayerState {
-    if (this.phase === 'HAND_COMPLETE' || this.phase === 'SHOWDOWN') this.invalid('The hand is complete.');
-    if (this.currentPlayerId !== playerId) throw new PokerEngineError('NOT_YOUR_TURN', 'It is not your turn.');
+    if (this.phase === 'HAND_COMPLETE' || this.phase === 'SHOWDOWN')
+      this.invalid('The hand is complete.');
+    if (this.currentPlayerId !== playerId)
+      throw new PokerEngineError('NOT_YOUR_TURN', 'It is not your turn.');
     const player = this.player(playerId);
     if (player.folded || player.allIn) this.invalid('You cannot act in this hand.');
     if (this.leavingPlayerIds.has(playerId)) this.invalid('You are leaving this table.');
@@ -507,7 +546,8 @@ export class PokerEngine {
     if (this.currentBet === 0 && player.stack > 0) actions.push('BET');
     const allInTarget = player.streetBet + player.stack;
     if (allInTarget <= this.currentBet || !this.acted.has(playerId)) actions.push('ALL_IN');
-    if (this.currentBet > 0 && allInTarget > this.currentBet && !this.acted.has(playerId)) actions.push('RAISE');
+    if (this.currentBet > 0 && allInTarget > this.currentBet && !this.acted.has(playerId))
+      actions.push('RAISE');
     return actions;
   }
 
@@ -524,11 +564,18 @@ export class PokerEngine {
   }
 
   private nextDecisionPlayer(afterPlayerId: string): PlayerState | null {
-    return this.playersInOrderAfter(afterPlayerId).find((player) => !player.folded && !player.allIn) ?? null;
+    return (
+      this.playersInOrderAfter(afterPlayerId).find((player) => !player.folded && !player.allIn) ??
+      null
+    );
   }
 
   private nextFundedPlayer(afterPlayerId: string, funded: PlayerState[]): PlayerState | null {
-    return this.playersInOrderAfter(afterPlayerId).find((player) => funded.some((candidate) => candidate.playerId === player.playerId)) ?? null;
+    return (
+      this.playersInOrderAfter(afterPlayerId).find((player) =>
+        funded.some((candidate) => candidate.playerId === player.playerId),
+      ) ?? null
+    );
   }
 
   private playersInOrderAfter(playerId: string): PlayerState[] {
@@ -552,7 +599,9 @@ export class PokerEngine {
   }
 
   private setDeadline(): void {
-    this.turnDeadline = this.currentPlayerId ? new Date(Date.now() + this.turnTimeoutMs).toISOString() : null;
+    this.turnDeadline = this.currentPlayerId
+      ? new Date(Date.now() + this.turnTimeoutMs).toISOString()
+      : null;
   }
 
   private invalid(message: string): never {

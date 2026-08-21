@@ -21,7 +21,9 @@ export function buildSidePots(contributions: PotContribution[]): PokerPot[] {
     if (amount > 0) {
       pots.push({
         amount,
-        eligiblePlayerIds: contributors.filter((entry) => !entry.folded).map((entry) => entry.playerId),
+        eligiblePlayerIds: contributors
+          .filter((entry) => !entry.folded)
+          .map((entry) => entry.playerId),
       });
     }
     previous = level;

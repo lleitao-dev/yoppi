@@ -98,5 +98,4 @@ describe('RoomManager', () => {
     manager.connect(roomId, '00000000-0000-4000-8000-000000000003', 'socket-2');
     expect(manager.get(roomId)?.playerRequirement.current).toBe(2);
   });
-
 });

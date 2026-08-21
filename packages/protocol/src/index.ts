@@ -36,7 +36,11 @@ export const CreateRoomRequestSchema = z.object({
 export type CreateRoomRequest = z.infer<typeof CreateRoomRequestSchema>;
 
 export const JoinRoomRequestSchema = z.object({
-  code: z.string().trim().toUpperCase().regex(/^[A-HJ-NP-Z2-9]{6}$/),
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-HJ-NP-Z2-9]{6}$/),
 });
 export type JoinRoomRequest = z.infer<typeof JoinRoomRequestSchema>;
 
@@ -88,7 +92,21 @@ export type GameStartPayload = z.infer<typeof GameStartSchema>;
 export const CardSuitSchema = z.enum(['CLUBS', 'DIAMONDS', 'HEARTS', 'SPADES']);
 export type CardSuit = z.infer<typeof CardSuitSchema>;
 
-export const CardRankSchema = z.enum(['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']);
+export const CardRankSchema = z.enum([
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  '10',
+  'J',
+  'Q',
+  'K',
+  'A',
+]);
 export type CardRank = z.infer<typeof CardRankSchema>;
 
 export const CardViewSchema = z.object({
@@ -97,7 +115,12 @@ export const CardViewSchema = z.object({
 });
 export type CardView = z.infer<typeof CardViewSchema>;
 
-export const BlackjackPhaseSchema = z.enum(['BETTING', 'PLAYER_TURNS', 'DEALER_TURN', 'ROUND_COMPLETE']);
+export const BlackjackPhaseSchema = z.enum([
+  'BETTING',
+  'PLAYER_TURNS',
+  'DEALER_TURN',
+  'ROUND_COMPLETE',
+]);
 export type BlackjackPhase = z.infer<typeof BlackjackPhaseSchema>;
 
 export const BlackjackPlayerStatusSchema = z.enum([
@@ -162,11 +185,25 @@ export type BlackjackBetPayload = z.infer<typeof BlackjackBetSchema>;
 export const BlackjackRoomActionSchema = z.object({ roomId: z.string().uuid() });
 export type BlackjackRoomActionPayload = z.infer<typeof BlackjackRoomActionSchema>;
 
-
-export const PokerPhaseSchema = z.enum(['PREFLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN', 'HAND_COMPLETE']);
+export const PokerPhaseSchema = z.enum([
+  'PREFLOP',
+  'FLOP',
+  'TURN',
+  'RIVER',
+  'SHOWDOWN',
+  'HAND_COMPLETE',
+]);
 export type PokerPhase = z.infer<typeof PokerPhaseSchema>;
 
-export const PokerActionSchema = z.enum(['CHECK', 'CALL', 'BET', 'RAISE', 'FOLD', 'ALL_IN', 'NEXT_HAND']);
+export const PokerActionSchema = z.enum([
+  'CHECK',
+  'CALL',
+  'BET',
+  'RAISE',
+  'FOLD',
+  'ALL_IN',
+  'NEXT_HAND',
+]);
 export type PokerAction = z.infer<typeof PokerActionSchema>;
 
 export const PokerHandCategorySchema = z.enum([
@@ -267,17 +304,44 @@ export interface ClientToServerEvents {
   'room:leave': (payload: RoomLeavePayload, callback: (response: RoomLeaveAck) => void) => void;
   'game:start': (payload: GameStartPayload, callback: (response: CommandAck) => void) => void;
   'blackjack:bet': (payload: BlackjackBetPayload, callback: (response: CommandAck) => void) => void;
-  'blackjack:hit': (payload: BlackjackRoomActionPayload, callback: (response: CommandAck) => void) => void;
-  'blackjack:stand': (payload: BlackjackRoomActionPayload, callback: (response: CommandAck) => void) => void;
-  'blackjack:double': (payload: BlackjackRoomActionPayload, callback: (response: CommandAck) => void) => void;
-  'blackjack:nextRound': (payload: BlackjackRoomActionPayload, callback: (response: CommandAck) => void) => void;
-  'poker:check': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
+  'blackjack:hit': (
+    payload: BlackjackRoomActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
+  'blackjack:stand': (
+    payload: BlackjackRoomActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
+  'blackjack:double': (
+    payload: BlackjackRoomActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
+  'blackjack:nextRound': (
+    payload: BlackjackRoomActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
+  'poker:check': (
+    payload: PokerRoomActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
   'poker:call': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
-  'poker:bet': (payload: PokerAmountActionPayload, callback: (response: CommandAck) => void) => void;
-  'poker:raise': (payload: PokerAmountActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:bet': (
+    payload: PokerAmountActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
+  'poker:raise': (
+    payload: PokerAmountActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
   'poker:fold': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
-  'poker:allIn': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
-  'poker:nextHand': (payload: PokerRoomActionPayload, callback: (response: CommandAck) => void) => void;
+  'poker:allIn': (
+    payload: PokerRoomActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
+  'poker:nextHand': (
+    payload: PokerRoomActionPayload,
+    callback: (response: CommandAck) => void,
+  ) => void;
 }
 
 export interface ServerToClientEvents {

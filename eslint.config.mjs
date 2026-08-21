@@ -9,8 +9,8 @@ export default tseslint.config(
       '**/dist/**',
       '**/coverage/**',
       '**/node_modules/**',
-      '**/generated/**'
-    ]
+      '**/generated/**',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -19,15 +19,15 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         ...globals.browser,
-        ...globals.node
-      }
+        ...globals.node,
+      },
     },
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
-        { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
-      ]
-    }
-  }
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
 );

@@ -62,10 +62,9 @@ describe('BlackjackEngine', () => {
   });
 
   it('waits for every seated player before dealing', () => {
-    const game = engine(
-      [card('10'), card('9'), card('8'), card('7'), card('6'), card('5')],
-      { twoPlayers: true },
-    );
+    const game = engine([card('10'), card('9'), card('8'), card('7'), card('6'), card('5')], {
+      twoPlayers: true,
+    });
     game.placeBet(P1, 10);
     expect(game.getView(P1).phase).toBe('BETTING');
     game.placeBet(P2, 10);
@@ -152,7 +151,9 @@ describe('BlackjackEngine', () => {
   });
 
   it('double down doubles the stake, deals exactly one card, and ends the turn', () => {
-    const game = engine([card('5'), card('10'), card('6'), card('7'), card('10')], { startingChips: 100 });
+    const game = engine([card('5'), card('10'), card('6'), card('7'), card('10')], {
+      startingChips: 100,
+    });
     game.placeBet(P1, 10);
     game.doubleDown(P1);
     const player = playerState(game);
@@ -175,10 +176,9 @@ describe('BlackjackEngine', () => {
   });
 
   it('enforces player turn order', () => {
-    const game = engine(
-      [card('10'), card('9'), card('8'), card('7'), card('7'), card('8')],
-      { twoPlayers: true },
-    );
+    const game = engine([card('10'), card('9'), card('8'), card('7'), card('7'), card('8')], {
+      twoPlayers: true,
+    });
     game.placeBet(P1, 10);
     game.placeBet(P2, 10);
     expect(() => game.stand(P2)).toThrowError(BlackjackEngineError);
@@ -187,10 +187,9 @@ describe('BlackjackEngine', () => {
   });
 
   it('transfers next-round authority to the new room host', () => {
-    const game = engine(
-      [card('A'), card('10'), card('9'), card('K'), card('Q'), card('7')],
-      { twoPlayers: true },
-    );
+    const game = engine([card('A'), card('10'), card('9'), card('K'), card('Q'), card('7')], {
+      twoPlayers: true,
+    });
     game.placeBet(P1, 10);
     game.placeBet(P2, 10);
     game.stand(P2);
@@ -204,10 +203,7 @@ describe('BlackjackEngine', () => {
   });
 
   it('allows only the host to begin the next round', () => {
-    const game = engine(
-      [card('A'), card('9'), card('K'), card('7')],
-      { twoPlayers: false },
-    );
+    const game = engine([card('A'), card('9'), card('K'), card('7')], { twoPlayers: false });
     game.placeBet(P1, 10);
     expect(game.getView(P1).allowedActions).toContain('NEXT_ROUND');
     game.beginNextRound(P1);
@@ -264,7 +260,9 @@ describe('BlackjackEngine', () => {
     expect(game.playerDisconnected(P2)).toBe(true);
     expect(game.getView(P2).players.find((player) => player.playerId === P2)?.status).toBe('OUT');
     expect(game.playerConnected(P2)).toBe(true);
-    expect(game.getView(P2).players.find((player) => player.playerId === P2)?.status).toBe('BETTING');
+    expect(game.getView(P2).players.find((player) => player.playerId === P2)?.status).toBe(
+      'BETTING',
+    );
   });
 
   it('carries a disconnected placed bet into the round as a standing hand', () => {
@@ -275,7 +273,9 @@ describe('BlackjackEngine', () => {
     game.placeBet(P1, 10);
     expect(game.playerDisconnected(P1)).toBe(false);
     game.placeBet(P2, 10);
-    expect(game.getView(P2).players.find((player) => player.playerId === P1)?.status).toBe('STANDING');
+    expect(game.getView(P2).players.find((player) => player.playerId === P1)?.status).toBe(
+      'STANDING',
+    );
     game.stand(P2);
     expect(game.getView(P2).phase).toBe('ROUND_COMPLETE');
   });
@@ -290,7 +290,9 @@ describe('BlackjackEngine', () => {
     expect(game.getView(P1).currentPlayerId).toBe(P1);
 
     expect(game.playerDisconnected(P2)).toBe(true);
-    expect(game.getView(P1).players.find((player) => player.playerId === P2)?.status).toBe('STANDING');
+    expect(game.getView(P1).players.find((player) => player.playerId === P2)?.status).toBe(
+      'STANDING',
+    );
     game.stand(P1);
     expect(game.getView(P1).phase).toBe('ROUND_COMPLETE');
   });
@@ -303,5 +305,4 @@ describe('BlackjackEngine', () => {
       'Blackjack participants can only be synchronized at a round boundary.',
     );
   });
-
 });

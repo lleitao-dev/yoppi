@@ -7,7 +7,11 @@ describe('FixedWindowRateLimiter', () => {
 
     expect(limiter.consume('alice')).toMatchObject({ allowed: true, remaining: 1 });
     expect(limiter.consume('alice')).toMatchObject({ allowed: true, remaining: 0 });
-    expect(limiter.consume('alice')).toMatchObject({ allowed: false, remaining: 0, retryAfterMs: 1_000 });
+    expect(limiter.consume('alice')).toMatchObject({
+      allowed: false,
+      remaining: 0,
+      retryAfterMs: 1_000,
+    });
   });
 
   it('isolates callers by key', () => {

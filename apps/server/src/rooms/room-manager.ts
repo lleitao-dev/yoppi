@@ -3,7 +3,10 @@ import { canStartGame } from './game-capabilities';
 
 type HydratedRoom = Omit<RoomView, 'revision' | 'canStart' | 'playerRequirement'>;
 
-function countsTowardRequirement(status: RoomView['status'], participation: ParticipationStatus): boolean {
+function countsTowardRequirement(
+  status: RoomView['status'],
+  participation: ParticipationStatus,
+): boolean {
   if (status === 'WAITING') return participation === 'WAITING';
   if (status === 'ACTIVE') return participation === 'PLAYING' || participation === 'QUEUED';
   return false;
@@ -23,7 +26,8 @@ export class RoomManager {
       playerRequirement: {
         minimum: room.minPlayers,
         current: 0,
-        graceDeadline: room.status === 'ACTIVE' ? (previous?.playerRequirement.graceDeadline ?? null) : null,
+        graceDeadline:
+          room.status === 'ACTIVE' ? (previous?.playerRequirement.graceDeadline ?? null) : null,
       },
       players: room.players.map((player) => ({
         ...player,

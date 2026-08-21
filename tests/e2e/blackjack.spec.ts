@@ -16,20 +16,54 @@ async function completeRound(alice: Page, bob: Page): Promise<void> {
   for (let action = 0; action < 3; action += 1) {
     await expect
       .poll(async () => {
-        if (await alice.getByRole('heading', { name: 'Round complete' }).isVisible().catch(() => false)) return 'complete';
-        if (await alice.getByRole('button', { name: 'Stand' }).isVisible().catch(() => false)) return 'alice';
-        if (await bob.getByRole('button', { name: 'Stand' }).isVisible().catch(() => false)) return 'bob';
+        if (
+          await alice
+            .getByRole('heading', { name: 'Round complete' })
+            .isVisible()
+            .catch(() => false)
+        )
+          return 'complete';
+        if (
+          await alice
+            .getByRole('button', { name: 'Stand' })
+            .isVisible()
+            .catch(() => false)
+        )
+          return 'alice';
+        if (
+          await bob
+            .getByRole('button', { name: 'Stand' })
+            .isVisible()
+            .catch(() => false)
+        )
+          return 'bob';
         return 'waiting';
       })
       .not.toBe('waiting');
 
     // expect.poll assertions do not return the polled value, so inspect once more after the wait.
-    if (await alice.getByRole('heading', { name: 'Round complete' }).isVisible().catch(() => false)) return;
-    if (await alice.getByRole('button', { name: 'Stand' }).isVisible().catch(() => false)) {
+    if (
+      await alice
+        .getByRole('heading', { name: 'Round complete' })
+        .isVisible()
+        .catch(() => false)
+    )
+      return;
+    if (
+      await alice
+        .getByRole('button', { name: 'Stand' })
+        .isVisible()
+        .catch(() => false)
+    ) {
       await alice.getByRole('button', { name: 'Stand' }).click();
       continue;
     }
-    if (await bob.getByRole('button', { name: 'Stand' }).isVisible().catch(() => false)) {
+    if (
+      await bob
+        .getByRole('button', { name: 'Stand' })
+        .isVisible()
+        .catch(() => false)
+    ) {
       await bob.getByRole('button', { name: 'Stand' }).click();
       continue;
     }
@@ -94,18 +128,38 @@ async function completeRoundFromOneRemainingPage(page: Page): Promise<void> {
   for (let action = 0; action < 4; action += 1) {
     await expect
       .poll(async () => {
-        if (await page.getByRole('heading', { name: 'Round complete' }).isVisible().catch(() => false)) return 'complete';
-        if (await page.getByRole('button', { name: 'Stand' }).isVisible().catch(() => false)) return 'stand';
+        if (
+          await page
+            .getByRole('heading', { name: 'Round complete' })
+            .isVisible()
+            .catch(() => false)
+        )
+          return 'complete';
+        if (
+          await page
+            .getByRole('button', { name: 'Stand' })
+            .isVisible()
+            .catch(() => false)
+        )
+          return 'stand';
         return 'waiting';
       })
       .not.toBe('waiting');
 
-    if (await page.getByRole('heading', { name: 'Round complete' }).isVisible().catch(() => false)) return;
+    if (
+      await page
+        .getByRole('heading', { name: 'Round complete' })
+        .isVisible()
+        .catch(() => false)
+    )
+      return;
     await page.getByRole('button', { name: 'Stand' }).click();
   }
 }
 
-test('active host transfers and the disconnected member can re-enter by code', async ({ browser }) => {
+test('active host transfers and the disconnected member can re-enter by code', async ({
+  browser,
+}) => {
   const { aliceContext, bobContext, alice, bob } = await createPlayers(browser);
 
   try {
@@ -137,7 +191,9 @@ test('active host transfers and the disconnected member can re-enter by code', a
     await aliceReconnected.getByRole('button', { name: 'Join room' }).click();
     await expect(aliceReconnected.getByText('Live table')).toBeVisible();
     await expect(aliceReconnected.getByText(/Alice Transfer · playing · online/)).toBeVisible();
-    await expect(aliceReconnected.getByText(/Bob Transfer · host · playing · online/)).toBeVisible();
+    await expect(
+      aliceReconnected.getByText(/Bob Transfer · host · playing · online/),
+    ).toBeVisible();
   } finally {
     await aliceContext.close();
     await bobContext.close();
@@ -146,13 +202,20 @@ test('active host transfers and the disconnected member can re-enter by code', a
 
 async function completeRoundForPages(pages: Page[]): Promise<void> {
   for (let action = 0; action < 8; action += 1) {
-    const complete = await pages[0].getByRole('heading', { name: 'Round complete' }).isVisible().catch(() => false);
+    const complete = await pages[0]
+      .getByRole('heading', { name: 'Round complete' })
+      .isVisible()
+      .catch(() => false);
     if (complete) return;
 
     let acted = false;
     for (const page of pages) {
       const stand = page.getByRole('button', { name: 'Stand' });
-      if (await stand.isVisible().catch(() => false)) {
+      const actionable = await stand
+        .isVisible()
+        .then(async (visible) => visible && (await stand.isEnabled()))
+        .catch(() => false);
+      if (actionable) {
         await stand.click();
         acted = true;
         break;
@@ -167,7 +230,9 @@ async function completeRoundForPages(pages: Page[]): Promise<void> {
   await expect(pages[0].getByRole('heading', { name: 'Round complete' })).toBeVisible();
 }
 
-test('active Blackjack queues new players and applies joins and leaves at round boundaries', async ({ browser }) => {
+test('active Blackjack queues new players and applies joins and leaves at round boundaries', async ({
+  browser,
+}) => {
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();
   const charlieContext = await browser.newContext();
@@ -186,6 +251,7 @@ test('active Blackjack queues new players and applies joins and leaves at round 
     await openBlackjack(bob);
     await bob.getByLabel('Room code').fill(roomCode!);
     await bob.getByRole('button', { name: 'Join room' }).click();
+    await expect(alice.getByText(/^2 connected · 2\/5 members$/)).toBeVisible();
 
     await alice.getByRole('button', { name: 'Start Blackjack' }).click();
     await expect(bob.getByText('Live table')).toBeVisible();
@@ -199,7 +265,9 @@ test('active Blackjack queues new players and applies joins and leaves at round 
     await expect(charlie.getByText(/Charlie Queue · queued · online/)).toBeVisible();
     await expect(charlie.getByRole('button', { name: 'Place bet' })).toHaveCount(0);
 
+    await expect(alice.getByRole('button', { name: 'Place bet' })).toBeEnabled();
     await alice.getByRole('button', { name: 'Place bet' }).click();
+    await expect(bob.getByRole('button', { name: 'Place bet' })).toBeEnabled();
     await bob.getByRole('button', { name: 'Place bet' }).click();
     await completeRoundForPages([alice, bob]);
 
@@ -226,7 +294,9 @@ test('active Blackjack queues new players and applies joins and leaves at round 
   }
 });
 
-test('single-player Blackjack returns to the waiting room after the minimum-player grace expires', async ({ browser }) => {
+test('single-player Blackjack returns to the waiting room after the minimum-player grace expires', async ({
+  browser,
+}) => {
   test.setTimeout(45_000);
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -255,7 +325,9 @@ test('single-player Blackjack returns to the waiting room after the minimum-play
   }
 });
 
-test('reconnecting before the grace deadline keeps the active Blackjack game alive', async ({ browser }) => {
+test('reconnecting before the grace deadline keeps the active Blackjack game alive', async ({
+  browser,
+}) => {
   test.setTimeout(45_000);
   const context = await browser.newContext();
   const page = await context.newPage();

@@ -11,7 +11,10 @@ describe('valueHand', () => {
 
   it('reduces multiple aces as required', () => {
     expect(valueHand([card('A'), card('A'), card('9')])).toMatchObject({ total: 21, soft: true });
-    expect(valueHand([card('A'), card('A'), card('9'), card('9')])).toMatchObject({ total: 20, soft: false });
+    expect(valueHand([card('A'), card('A'), card('9'), card('9')])).toMatchObject({
+      total: 20,
+      soft: false,
+    });
   });
 
   it('recognizes natural blackjack and busts', () => {

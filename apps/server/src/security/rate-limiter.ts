@@ -19,7 +19,8 @@ export class FixedWindowRateLimiter {
     private readonly now: () => number = Date.now,
   ) {
     if (!Number.isInteger(max) || max <= 0) throw new Error('max must be a positive integer');
-    if (!Number.isInteger(windowMs) || windowMs <= 0) throw new Error('windowMs must be a positive integer');
+    if (!Number.isInteger(windowMs) || windowMs <= 0)
+      throw new Error('windowMs must be a positive integer');
   }
 
   consume(key: string): RateLimitDecision {
@@ -28,9 +29,10 @@ export class FixedWindowRateLimiter {
     if (this.operations % 256 === 0) this.prune(currentTime);
 
     const existing = this.buckets.get(key);
-    const bucket = !existing || existing.resetAt <= currentTime
-      ? { count: 0, resetAt: currentTime + this.windowMs }
-      : existing;
+    const bucket =
+      !existing || existing.resetAt <= currentTime
+        ? { count: 0, resetAt: currentTime + this.windowMs }
+        : existing;
 
     bucket.count += 1;
     this.buckets.set(key, bucket);

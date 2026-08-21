@@ -29,7 +29,11 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     } catch {
       // The fallback below handles responses without JSON bodies.
     }
-    throw new ApiError(response.status, error.code ?? 'HTTP_ERROR', error.message ?? 'Request failed.');
+    throw new ApiError(
+      response.status,
+      error.code ?? 'HTTP_ERROR',
+      error.message ?? 'Request failed.',
+    );
   }
 
   if (response.status === 204) return undefined as T;

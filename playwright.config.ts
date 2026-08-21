@@ -5,6 +5,7 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 8_000 },
   fullyParallel: false,
+  workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
   use: {
     baseURL: process.env.YOPPI_WEB_URL ?? 'http://localhost:3000',

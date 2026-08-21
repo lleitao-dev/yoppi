@@ -37,7 +37,10 @@ export function buildApp(env: AppEnv): FastifyInstance {
     },
   });
 
-  const httpLimiter = new FixedWindowRateLimiter(env.HTTP_RATE_LIMIT_MAX, env.HTTP_RATE_LIMIT_WINDOW_MS);
+  const httpLimiter = new FixedWindowRateLimiter(
+    env.HTTP_RATE_LIMIT_MAX,
+    env.HTTP_RATE_LIMIT_WINDOW_MS,
+  );
 
   app.register(cors, {
     origin: env.WEB_ORIGIN,
@@ -55,7 +58,9 @@ export function buildApp(env: AppEnv): FastifyInstance {
     if (!decision.allowed) {
       reply.header('retry-after', Math.max(1, Math.ceil(decision.retryAfterMs / 1_000)));
       request.log.warn({ event: 'http.rate_limited', ip: request.ip }, 'HTTP rate limit exceeded');
-      return reply.code(429).send({ code: 'RATE_LIMITED', message: 'Too many requests. Try again shortly.' });
+      return reply
+        .code(429)
+        .send({ code: 'RATE_LIMITED', message: 'Too many requests. Try again shortly.' });
     }
   });
 
@@ -68,12 +73,16 @@ export function buildApp(env: AppEnv): FastifyInstance {
   });
 
   app.setNotFoundHandler(async (request, reply) => {
-    request.log.info({ event: 'http.not_found', method: request.method, path: request.url }, 'Route not found');
+    request.log.info(
+      { event: 'http.not_found', method: request.method, path: request.url },
+      'Route not found',
+    );
     return reply.code(404).send({ code: 'NOT_FOUND', message: 'Route not found.' });
   });
 
   app.setErrorHandler(async (error, request, reply) => {
-    const statusCode = typeof error.statusCode === 'number' && error.statusCode < 500 ? error.statusCode : 500;
+    const statusCode =
+      typeof error.statusCode === 'number' && error.statusCode < 500 ? error.statusCode : 500;
     if (statusCode >= 500) {
       request.log.error({ err: error, event: 'http.unhandled_error' }, 'Unhandled request error');
     } else {
@@ -81,7 +90,9 @@ export function buildApp(env: AppEnv): FastifyInstance {
     }
 
     const message = statusCode >= 500 ? 'Internal server error.' : error.message;
-    return reply.code(statusCode).send({ code: statusCode >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR', message });
+    return reply
+      .code(statusCode)
+      .send({ code: statusCode >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR', message });
   });
 
   app.register(healthRoute, { prefix: '/api/v1' });

@@ -42,11 +42,11 @@ Open:
 Expected:
 
 ```json
-{"status":"ok"}
+{ "status": "ok" }
 ```
 
 ```json
-{"status":"ready"}
+{ "status": "ready" }
 ```
 
 ## Quality gates

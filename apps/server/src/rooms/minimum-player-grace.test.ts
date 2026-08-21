@@ -73,10 +73,7 @@ describe('MinimumPlayerGraceController', () => {
     const room = activePokerRoom();
     manager.hydrate({
       ...room,
-      players: [
-        room.players[0]!,
-        { ...room.players[1]!, seat: null, participation: 'QUEUED' },
-      ],
+      players: [room.players[0]!, { ...room.players[1]!, seat: null, participation: 'QUEUED' }],
     });
     manager.connect(roomId, aliceId, 'socket-alice');
     const expired = vi.fn(async () => undefined);

@@ -26,7 +26,7 @@ jobs:
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@10.0.0 --activate
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Generate Prisma client
         run: pnpm prisma:generate
       - run: pnpm format:check
@@ -45,7 +45,7 @@ jobs:
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@10.0.0 --activate
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Configure local environment
@@ -66,6 +66,14 @@ jobs:
           exit 1
       - name: Multiplayer browser tests
         run: pnpm test:e2e
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Container logs on failure
         if: failure()
         run: docker compose logs

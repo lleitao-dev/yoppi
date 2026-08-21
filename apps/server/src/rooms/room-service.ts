@@ -78,9 +78,7 @@ const roomInclude = {
 
 function nextSeat(activeMembers: RoomRecord['members']): number {
   const usedSeats = new Set(
-    activeMembers
-      .map((member) => member.seat)
-      .filter((seat): seat is number => seat !== null),
+    activeMembers.map((member) => member.seat).filter((seat): seat is number => seat !== null),
   );
   let seat = 0;
   while (usedSeats.has(seat)) seat += 1;
@@ -117,7 +115,9 @@ export async function getRoomForMember(roomId: string, playerId: string): Promis
     include: roomInclude,
   });
   if (!record) return null;
-  const member = record.members.find((entry) => entry.playerId === playerId && entry.leftAt === null);
+  const member = record.members.find(
+    (entry) => entry.playerId === playerId && entry.leftAt === null,
+  );
   if (!member) return null;
   return toRoomView(record);
 }
@@ -185,7 +185,10 @@ export async function leaveRoom(roomId: string, playerId: string): Promise<Leave
       where: { id: member.id },
       data: { participation: 'LEAVING' },
     });
-    const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
+    const updated = await prisma.room.findUniqueOrThrow({
+      where: { id: roomId },
+      include: roomInclude,
+    });
     const view = toRoomView(updated);
     return { room: roomManager.bumpRoom(roomId) ?? view, disposition: 'DEFERRED' };
   }
@@ -219,7 +222,10 @@ export async function leaveRoom(roomId: string, playerId: string): Promise<Leave
     return { room: null, disposition: 'LEFT' };
   }
 
-  const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
+  const updated = await prisma.room.findUniqueOrThrow({
+    where: { id: roomId },
+    include: roomInclude,
+  });
   const view = toRoomView(updated);
   return { room: roomManager.bumpRoom(roomId) ?? view, disposition: 'LEFT' };
 }
@@ -234,7 +240,12 @@ export interface BoundaryMembershipResult {
 export async function applyBoundaryMembership(roomId: string): Promise<BoundaryMembershipResult> {
   const room = await prisma.room.findUnique({ where: { id: roomId }, include: roomInclude });
   if (!room || room.status !== 'ACTIVE') {
-    return { room: room ? toRoomView(room) : null, changed: false, admittedPlayerIds: [], removedPlayerIds: [] };
+    return {
+      room: room ? toRoomView(room) : null,
+      changed: false,
+      admittedPlayerIds: [],
+      removedPlayerIds: [],
+    };
   }
 
   const currentView = toRoomView(room);
@@ -245,7 +256,9 @@ export async function applyBoundaryMembership(roomId: string): Promise<BoundaryM
   const leaving = activeMembers.filter((member) => member.participation === 'LEAVING');
   const playing = activeMembers.filter((member) => member.participation === 'PLAYING');
   const queued = activeMembers
-    .filter((member) => member.participation === 'QUEUED' && connectedPlayerIds.has(member.playerId))
+    .filter(
+      (member) => member.participation === 'QUEUED' && connectedPlayerIds.has(member.playerId),
+    )
     .sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
 
   const availableSeats = Math.max(0, room.maxPlayers - playing.length);
@@ -258,9 +271,7 @@ export async function applyBoundaryMembership(roomId: string): Promise<BoundaryM
   }
 
   const usedSeats = new Set(
-    playing
-      .map((member) => member.seat)
-      .filter((seat): seat is number => seat !== null),
+    playing.map((member) => member.seat).filter((seat): seat is number => seat !== null),
   );
 
   await prisma.$transaction(async (tx) => {
@@ -284,7 +295,10 @@ export async function applyBoundaryMembership(roomId: string): Promise<BoundaryM
 
   for (const playerId of removedPlayerIds) roomManager.removePlayer(roomId, playerId);
 
-  const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
+  const updated = await prisma.room.findUniqueOrThrow({
+    where: { id: roomId },
+    include: roomInclude,
+  });
   const view = toRoomView(updated);
   return {
     room: roomManager.bumpRoom(roomId) ?? view,
@@ -357,7 +371,10 @@ export async function resetRoomAfterInsufficientPlayers(
 
   for (const member of leaving) roomManager.removePlayer(roomId, member.playerId);
 
-  const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
+  const updated = await prisma.room.findUniqueOrThrow({
+    where: { id: roomId },
+    include: roomInclude,
+  });
   const view = toRoomView(updated);
   return { room: roomManager.bumpRoom(roomId) ?? view, closed: updated.status === 'CLOSED' };
 }
@@ -369,7 +386,8 @@ export interface HostTransferResult {
 
 export async function ensureConnectedHost(roomId: string): Promise<HostTransferResult | null> {
   const current = roomManager.get(roomId);
-  if (!current || current.status === 'CLOSED') return current ? { room: current, changed: false } : null;
+  if (!current || current.status === 'CLOSED')
+    return current ? { room: current, changed: false } : null;
 
   const host = current.players.find((player) => player.playerId === current.hostPlayerId);
   if (host?.connected && host.participation !== 'LEAVING') return { room: current, changed: false };
@@ -388,7 +406,10 @@ export async function ensureConnectedHost(roomId: string): Promise<HostTransferR
   }
 
   await prisma.room.update({ where: { id: roomId }, data: { hostId: replacement.playerId } });
-  const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
+  const updated = await prisma.room.findUniqueOrThrow({
+    where: { id: roomId },
+    include: roomInclude,
+  });
   const view = toRoomView(updated);
   return { room: roomManager.bumpRoom(roomId) ?? view, changed: true };
 }
@@ -404,7 +425,10 @@ async function startRoomByType(
   const member = room.members.find((entry) => entry.playerId === playerId && entry.leftAt === null);
   if (!member) throw new RoomServiceError('NOT_ROOM_MEMBER', 'You are not a member of this room.');
   if (room.gameType !== gameType) {
-    throw new RoomServiceError('WRONG_GAME_TYPE', `This room is configured for ${room.gameType.toLowerCase()}.`);
+    throw new RoomServiceError(
+      'WRONG_GAME_TYPE',
+      `This room is configured for ${room.gameType.toLowerCase()}.`,
+    );
   }
   if (room.status !== 'WAITING') {
     throw new RoomServiceError('ROOM_ALREADY_STARTED', 'This room has already started.');
@@ -438,7 +462,10 @@ async function startRoomByType(
     await tx.gameSession.create({ data: { roomId, gameType, config: gameConfig } });
   });
 
-  const updated = await prisma.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
+  const updated = await prisma.room.findUniqueOrThrow({
+    where: { id: roomId },
+    include: roomInclude,
+  });
   const view = toRoomView(updated);
   return roomManager.bumpRoom(roomId) ?? view;
 }

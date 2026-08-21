@@ -62,7 +62,9 @@ describe('Poker engine', () => {
   it('does not expose opponents hole cards before showdown', () => {
     const engine = game();
     const alice = engine.getView(ALICE);
-    expect(alice.players.find((player) => player.playerId === ALICE)?.cards.every(Boolean)).toBe(true);
+    expect(alice.players.find((player) => player.playerId === ALICE)?.cards.every(Boolean)).toBe(
+      true,
+    );
     expect(alice.players.find((player) => player.playerId === BOB)?.cards).toEqual([null, null]);
   });
 

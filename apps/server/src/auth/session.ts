@@ -13,11 +13,7 @@ export function createSessionToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
-export function setSessionCookie(
-  reply: FastifyReply,
-  token: string,
-  secure: boolean,
-): void {
+export function setSessionCookie(reply: FastifyReply, token: string, secure: boolean): void {
   reply.setCookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure,

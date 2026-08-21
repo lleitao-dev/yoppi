@@ -5,7 +5,8 @@ export class PokerGameManager {
   private readonly games = new Map<string, PokerEngine>();
 
   start(room: RoomView, turnTimeoutMs = 30_000): PokerEngine {
-    if (room.gameType !== 'POKER') throw new Error('Cannot start a Poker engine for another game type.');
+    if (room.gameType !== 'POKER')
+      throw new Error('Cannot start a Poker engine for another game type.');
     const existing = this.games.get(room.id);
     if (existing) return existing;
 

@@ -3,8 +3,8 @@ name: yoppi
 x-default-logging: &default-logging
   driver: json-file
   options:
-    max-size: "20m"
-    max-file: "5"
+    max-size: '20m'
+    max-file: '5'
 
 services:
   server:
@@ -15,17 +15,17 @@ services:
       NODE_ENV: production
       SERVER_PORT: 4000
       WEB_ORIGIN: https://${YOPPI_DOMAIN:?Set YOPPI_DOMAIN}
-      TRUST_PROXY: "true"
+      TRUST_PROXY: 'true'
     expose:
-      - "4000"
+      - '4000'
     restart: unless-stopped
     logging: *default-logging
     healthcheck:
       test:
         [
-          "CMD",
-          "node",
-          "-e",
+          'CMD',
+          'node',
+          '-e',
           "fetch('http://127.0.0.1:4000/api/v1/ready').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));",
         ]
       interval: 10s
@@ -38,7 +38,7 @@ services:
     environment:
       NODE_ENV: production
     expose:
-      - "3000"
+      - '3000'
     restart: unless-stopped
     logging: *default-logging
     depends_on:
@@ -47,9 +47,9 @@ services:
     healthcheck:
       test:
         [
-          "CMD",
-          "node",
-          "-e",
+          'CMD',
+          'node',
+          '-e',
           "fetch('http://127.0.0.1:3000').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));",
         ]
       interval: 10s
@@ -64,9 +64,9 @@ services:
     environment:
       YOPPI_DOMAIN: ${YOPPI_DOMAIN:?Set YOPPI_DOMAIN}
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

@@ -40,7 +40,10 @@ async function shutdown(signal: string): Promise<void> {
     process.exitCode = 0;
   } catch (error) {
     clearTimeout(forcedExit);
-    app.log.error({ err: error, event: 'server.shutdown_failed', signal }, 'Graceful shutdown failed');
+    app.log.error(
+      { err: error, event: 'server.shutdown_failed', signal },
+      'Graceful shutdown failed',
+    );
     process.exitCode = 1;
   }
 }

@@ -2,8 +2,19 @@ import type { Card } from '@yoppi/game-types';
 import type { PokerHandCategory } from '@yoppi/protocol';
 
 const RANK_VALUE: Record<Card['rank'], number> = {
-  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
-  '10': 10, J: 11, Q: 12, K: 13, A: 14,
+  '2': 2,
+  '3': 3,
+  '4': 4,
+  '5': 5,
+  '6': 6,
+  '7': 7,
+  '8': 8,
+  '9': 9,
+  '10': 10,
+  J: 11,
+  Q: 12,
+  K: 13,
+  A: 14,
 };
 
 const CATEGORY_VALUE: Record<PokerHandCategory, number> = {
@@ -68,7 +79,8 @@ export function evaluateFive(cards: Card[]): EvaluatedHand {
   const flush = cards.every((card) => card.suit === firstCard.suit);
   const straight = straightHigh(values);
 
-  if (flush && straight !== null) return { category: 'STRAIGHT_FLUSH', tiebreak: [straight], cards };
+  if (flush && straight !== null)
+    return { category: 'STRAIGHT_FLUSH', tiebreak: [straight], cards };
 
   if (primary[1] === 4) {
     const kicker = groups[1];
@@ -135,7 +147,8 @@ export function compareHands(left: EvaluatedHand, right: EvaluatedHand): number 
 }
 
 export function evaluateBest(cards: Card[]): EvaluatedHand {
-  if (cards.length < 5 || cards.length > 7) throw new Error('Poker hands require five to seven cards.');
+  if (cards.length < 5 || cards.length > 7)
+    throw new Error('Poker hands require five to seven cards.');
   let best: EvaluatedHand | null = null;
   for (const candidate of combinations(cards, 5)) {
     const evaluated = evaluateFive(candidate);

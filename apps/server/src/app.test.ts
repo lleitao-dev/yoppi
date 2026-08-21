@@ -63,7 +63,10 @@ describe('server hardening', () => {
 
     expect(first.statusCode).toBe(404);
     expect(second.statusCode).toBe(429);
-    expect(second.json()).toEqual({ code: 'RATE_LIMITED', message: 'Too many requests. Try again shortly.' });
+    expect(second.json()).toEqual({
+      code: 'RATE_LIMITED',
+      message: 'Too many requests. Try again shortly.',
+    });
     expect(second.headers['retry-after']).toBeDefined();
   });
 

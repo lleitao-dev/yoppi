@@ -94,12 +94,19 @@ export class BlackjackEngine {
   }
 
   placeBet(playerId: string, amount: number): void {
-    if (this.leavingPlayerIds.has(playerId)) this.invalidAction('This player is leaving the table.');
+    if (this.leavingPlayerIds.has(playerId))
+      this.invalidAction('This player is leaving the table.');
     if (this.phase !== 'BETTING') this.invalidAction('Bets are closed for this round.');
     const player = this.player(playerId);
-    if (player.status === 'OUT') this.invalidAction('This player does not have enough chips to bet.');
+    if (player.status === 'OUT')
+      this.invalidAction('This player does not have enough chips to bet.');
     if (player.bet > 0) this.invalidAction('A bet has already been placed for this round.');
-    if (!Number.isInteger(amount) || amount < this.minBet || amount > this.maxBet || amount % BET_INCREMENT !== 0) {
+    if (
+      !Number.isInteger(amount) ||
+      amount < this.minBet ||
+      amount > this.maxBet ||
+      amount % BET_INCREMENT !== 0
+    ) {
       throw new BlackjackEngineError(
         'INVALID_BET',
         `Bet must be a multiple of ${BET_INCREMENT} between ${this.minBet} and ${this.maxBet}.`,
@@ -143,7 +150,8 @@ export class BlackjackEngine {
 
   doubleDown(playerId: string): void {
     const player = this.assertTurn(playerId);
-    if (player.cards.length !== 2) this.invalidAction('Double down is only available on the first two cards.');
+    if (player.cards.length !== 2)
+      this.invalidAction('Double down is only available on the first two cards.');
     if (player.chips < player.bet) {
       throw new BlackjackEngineError('INSUFFICIENT_CHIPS', 'Insufficient chips to double down.');
     }
@@ -163,8 +171,10 @@ export class BlackjackEngine {
   }
 
   beginNextRound(playerId: string): void {
-    if (playerId !== this.hostPlayerId) this.invalidAction('Only the room host can start the next round.');
-    if (this.phase !== 'ROUND_COMPLETE') this.invalidAction('The current round is still in progress.');
+    if (playerId !== this.hostPlayerId)
+      this.invalidAction('Only the room host can start the next round.');
+    if (this.phase !== 'ROUND_COMPLETE')
+      this.invalidAction('The current round is still in progress.');
 
     this.round += 1;
     this.phase = 'BETTING';
@@ -177,7 +187,10 @@ export class BlackjackEngine {
       player.cards = [];
       player.result = null;
       player.net = 0;
-      player.status = player.chips >= this.minBet && !this.disconnectedPlayerIds.has(player.playerId) ? 'BETTING' : 'OUT';
+      player.status =
+        player.chips >= this.minBet && !this.disconnectedPlayerIds.has(player.playerId)
+          ? 'BETTING'
+          : 'OUT';
     }
     this.bump();
     this.maybeDealInitialCards();
@@ -266,7 +279,8 @@ export class BlackjackEngine {
     for (const player of players) {
       const current = existing.get(player.playerId);
       if (current) {
-        if (current.displayName !== player.displayName || current.seat !== player.seat) changed = true;
+        if (current.displayName !== player.displayName || current.seat !== player.seat)
+          changed = true;
         current.displayName = player.displayName;
         current.seat = player.seat;
         next.push(current);
@@ -388,7 +402,8 @@ export class BlackjackEngine {
       const blackjack = valueHand(player.cards).blackjack;
       player.status = blackjack
         ? 'BLACKJACK'
-        : this.leavingPlayerIds.has(player.playerId) || this.disconnectedPlayerIds.has(player.playerId)
+        : this.leavingPlayerIds.has(player.playerId) ||
+            this.disconnectedPlayerIds.has(player.playerId)
           ? 'STANDING'
           : 'PLAYING';
     }
@@ -410,7 +425,8 @@ export class BlackjackEngine {
   }
 
   private assertTurn(playerId: string): PlayerState {
-    if (this.leavingPlayerIds.has(playerId)) this.invalidAction('This player is leaving the table.');
+    if (this.leavingPlayerIds.has(playerId))
+      this.invalidAction('This player is leaving the table.');
     if (this.phase !== 'PLAYER_TURNS' || this.currentPlayerId !== playerId) {
       throw new BlackjackEngineError('NOT_YOUR_TURN', 'It is not your turn.');
     }
@@ -418,7 +434,9 @@ export class BlackjackEngine {
   }
 
   private advanceTurn(): void {
-    const currentIndex = this.players.findIndex((player) => player.playerId === this.currentPlayerId);
+    const currentIndex = this.players.findIndex(
+      (player) => player.playerId === this.currentPlayerId,
+    );
     const next = this.players.slice(currentIndex + 1).find((player) => player.status === 'PLAYING');
     if (next) {
       this.currentPlayerId = next.playerId;

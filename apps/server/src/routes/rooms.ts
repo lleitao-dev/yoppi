@@ -5,7 +5,8 @@ import { createRoom, getRoomForMember, joinRoom, RoomServiceError } from '../roo
 
 function roomErrorStatus(code: RoomServiceError['code']): number {
   if (code === 'ROOM_NOT_FOUND') return 404;
-  if (code === 'ROOM_FULL' || code === 'ROOM_ALREADY_STARTED' || code === 'INSUFFICIENT_PLAYERS') return 409;
+  if (code === 'ROOM_FULL' || code === 'ROOM_ALREADY_STARTED' || code === 'INSUFFICIENT_PLAYERS')
+    return 409;
   return 400;
 }
 
@@ -13,12 +14,16 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
   app.post('/rooms', async (request, reply) => {
     const player = await getPlayerFromRequest(request);
     if (!player) {
-      return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Create a guest session first.' });
+      return reply
+        .code(401)
+        .send({ code: 'UNAUTHENTICATED', message: 'Create a guest session first.' });
     }
 
     const parsed = CreateRoomRequestSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ code: 'VALIDATION_ERROR', message: 'Select a supported game.' });
+      return reply
+        .code(400)
+        .send({ code: 'VALIDATION_ERROR', message: 'Select a supported game.' });
     }
 
     const room = await createRoom(player.id, parsed.data.gameType);
@@ -28,12 +33,16 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
   app.post('/rooms/join', async (request, reply) => {
     const player = await getPlayerFromRequest(request);
     if (!player) {
-      return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Create a guest session first.' });
+      return reply
+        .code(401)
+        .send({ code: 'UNAUTHENTICATED', message: 'Create a guest session first.' });
     }
 
     const parsed = JoinRoomRequestSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ code: 'VALIDATION_ERROR', message: 'Enter a valid six-character room code.' });
+      return reply
+        .code(400)
+        .send({ code: 'VALIDATION_ERROR', message: 'Enter a valid six-character room code.' });
     }
 
     try {
@@ -41,7 +50,9 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
       return { room };
     } catch (error) {
       if (error instanceof RoomServiceError) {
-        return reply.code(roomErrorStatus(error.code)).send({ code: error.code, message: error.message });
+        return reply
+          .code(roomErrorStatus(error.code))
+          .send({ code: error.code, message: error.message });
       }
       throw error;
     }
@@ -50,12 +61,16 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { roomId: string } }>('/rooms/:roomId', async (request, reply) => {
     const player = await getPlayerFromRequest(request);
     if (!player) {
-      return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Create a guest session first.' });
+      return reply
+        .code(401)
+        .send({ code: 'UNAUTHENTICATED', message: 'Create a guest session first.' });
     }
 
     const room = await getRoomForMember(request.params.roomId, player.id);
     if (!room) {
-      return reply.code(404).send({ code: 'ROOM_NOT_FOUND', message: 'Room not found or you are not a member.' });
+      return reply
+        .code(404)
+        .send({ code: 'ROOM_NOT_FOUND', message: 'Room not found or you are not a member.' });
     }
     return { room };
   });

@@ -46,7 +46,8 @@ export function InsufficientPlayerBanner({ requirement }: InsufficientPlayerBann
           <div>
             <p className="font-semibold">Insufficient players</p>
             <p className="mt-1 text-sm text-amber-100/80">
-              {requirement.current}/{requirement.minimum} required players are currently available. The active game will return to the lobby unless enough players reconnect or join.
+              {requirement.current}/{requirement.minimum} required players are currently available.
+              The active game will return to the lobby unless enough players reconnect or join.
             </p>
           </div>
           <div className="min-w-20 text-right">

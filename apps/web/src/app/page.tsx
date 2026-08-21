@@ -39,16 +39,26 @@ export default function HomePage() {
     <main className="mx-auto flex min-h-screen max-w-5xl items-center px-6 py-16">
       <div className="grid w-full gap-12 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
         <section>
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-400">Blackjack v0.3</p>
-          <h1 className="mt-3 max-w-3xl text-5xl font-semibold tracking-tight sm:text-6xl">Yoppi Online Casino</h1>
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-400">
+            Blackjack v0.3
+          </p>
+          <h1 className="mt-3 max-w-3xl text-5xl font-semibold tracking-tight sm:text-6xl">
+            Yoppi Online Casino
+          </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-            Multiplayer, play-money Blackjack and Texas Hold&apos;em. Create a guest identity and enter the lobby.
+            Multiplayer, play-money Blackjack and Texas Hold&apos;em. Create a guest identity and
+            enter the lobby.
           </p>
         </section>
 
-        <form onSubmit={(event) => void enterYoppi(event)} className="rounded-2xl border border-white/10 bg-white/5 p-7">
+        <form
+          onSubmit={(event) => void enterYoppi(event)}
+          className="rounded-2xl border border-white/10 bg-white/5 p-7"
+        >
           <h2 className="text-xl font-medium">Enter Yoppi</h2>
-          <label className="mt-5 block text-sm text-slate-300" htmlFor="displayName">Display name</label>
+          <label className="mt-5 block text-sm text-slate-300" htmlFor="displayName">
+            Display name
+          </label>
           <input
             id="displayName"
             autoComplete="nickname"
