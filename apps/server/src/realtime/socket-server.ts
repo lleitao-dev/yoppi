@@ -26,6 +26,7 @@ import { InsufficientPlayerGraceController } from '../rooms/insufficient-player-
 import { reconcileRoomAtGameBoundary } from '../rooms/room-lifecycle';
 import { roomManager } from '../rooms/room-manager';
 import { FixedWindowRateLimiter } from '../security/rate-limiter';
+import { isAllowedSocketRequest } from './socket-origin';
 import {
   ensureConnectedHost,
   getRoomForMember,
@@ -100,7 +101,10 @@ export function attachSocketServer(app: FastifyInstance, env: AppEnv): YoppiSock
       credentials: true,
     },
     allowRequest: (request, callback) => {
-      callback(null, request.headers.origin === env.WEB_ORIGIN);
+      callback(
+        null,
+        isAllowedSocketRequest(request.headers.origin, request.headers.host, env.WEB_ORIGIN),
+      );
     },
     maxHttpBufferSize: env.BODY_LIMIT_BYTES,
   });
