@@ -9,6 +9,7 @@ x-default-logging: &default-logging
 services:
   server:
     image: ${YOPPI_REGISTRY:?Set YOPPI_REGISTRY}/yoppi-server:${YOPPI_VERSION:?Set YOPPI_VERSION}
+    init: true
     env_file:
       - .env.production
     environment:
@@ -35,6 +36,7 @@ services:
 
   web:
     image: ${YOPPI_REGISTRY:?Set YOPPI_REGISTRY}/yoppi-web:${YOPPI_VERSION:?Set YOPPI_VERSION}
+    init: true
     environment:
       NODE_ENV: production
     expose:
@@ -59,8 +61,6 @@ services:
 
   caddy:
     image: caddy:2-alpine
-    env_file:
-      - .env.production
     environment:
       YOPPI_DOMAIN: ${YOPPI_DOMAIN:?Set YOPPI_DOMAIN}
     ports:
