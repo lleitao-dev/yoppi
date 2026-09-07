@@ -64,6 +64,9 @@ jobs:
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:4000/api/v1/ready >/dev/null \
               && curl --fail --silent http://localhost:3000 >/dev/null; then
+              curl --fail --silent http://localhost:3000/lobby >/dev/null
+              curl --fail --silent http://localhost:3000/games/blackjack >/dev/null
+              curl --fail --silent http://localhost:3000/games/poker >/dev/null
               exit 0
             fi
             sleep 2
@@ -99,9 +102,5 @@ jobs:
         run: corepack enable && corepack prepare pnpm@10.0.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Audit dependencies (advisory)
-        shell: bash
-        run: |
-          if ! pnpm audit --audit-level high; then
-            echo "::warning::High-severity dependency findings were reported. Audit is advisory for v0.9.x."
-          fi
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high

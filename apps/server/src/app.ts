@@ -82,14 +82,27 @@ export function buildApp(env: AppEnv): FastifyInstance {
 
   app.setErrorHandler(async (error, request, reply) => {
     const statusCode =
-      typeof error.statusCode === 'number' && error.statusCode < 500 ? error.statusCode : 500;
+      typeof error === 'object' &&
+      error !== null &&
+      'statusCode' in error &&
+      typeof error.statusCode === 'number' &&
+      error.statusCode < 500
+        ? error.statusCode
+        : 500;
+
     if (statusCode >= 500) {
       request.log.error({ err: error, event: 'http.unhandled_error' }, 'Unhandled request error');
     } else {
       request.log.warn({ err: error, event: 'http.request_error' }, 'Request rejected');
     }
 
-    const message = statusCode >= 500 ? 'Internal server error.' : error.message;
+    const message =
+      statusCode >= 500
+        ? 'Internal server error.'
+        : error instanceof Error
+          ? error.message
+          : 'Request rejected.';
+
     return reply
       .code(statusCode)
       .send({ code: statusCode >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR', message });
