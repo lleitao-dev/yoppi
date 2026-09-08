@@ -19,8 +19,8 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Enable pnpm
@@ -29,6 +29,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Generate Prisma client
         run: pnpm prisma:generate
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
@@ -38,8 +40,8 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Enable pnpm
@@ -57,6 +59,9 @@ jobs:
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:4000/api/v1/ready >/dev/null \
               && curl --fail --silent http://localhost:3000 >/dev/null; then
+              curl --fail --silent http://localhost:3000/lobby >/dev/null
+              curl --fail --silent http://localhost:3000/games/blackjack >/dev/null
+              curl --fail --silent http://localhost:3000/games/poker >/dev/null
               exit 0
             fi
             sleep 2
@@ -85,7 +90,7 @@ jobs:
     needs: [verify, e2e]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Resolve release metadata
         id: meta
         shell: bash

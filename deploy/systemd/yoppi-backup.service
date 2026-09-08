@@ -1,0 +1,16 @@
+[Unit]
+Description=Yoppi encrypted off-site PostgreSQL backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/yoppi/.env.backup
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/yoppi
+UMask=0077
+ExecStart=/opt/yoppi/ops/backup-offsite.sh
+TimeoutStartSec=1h
+Nice=10

@@ -13,3 +13,5 @@ test-results/
 backups/
 .yoppi-release
 .yoppi-previous-release
+
+.env.backup

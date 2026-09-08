@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Validate release version
         shell: bash
         env:
@@ -51,10 +51,12 @@ jobs:
       - name: Upload deployment manifests
         shell: bash
         run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/deploy' '$DEPLOY_PATH/ops'"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/deploy/systemd' '$DEPLOY_PATH/ops'"
           scp docker-compose.deploy.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/docker-compose.deploy.yml"
           scp deploy/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy/Caddyfile"
-          scp ops/deploy.sh ops/rollback.sh ops/smoke-test.sh ops/backup-db.sh ops/restore-db.sh \
+          scp deploy/systemd/yoppi-backup.service deploy/systemd/yoppi-backup.timer \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy/systemd/"
+          scp ops/deploy.sh ops/rollback.sh ops/smoke-test.sh ops/backup-db.sh ops/backup-offsite.sh ops/restore-db.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/ops/"
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
