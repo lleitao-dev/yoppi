@@ -16,6 +16,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@10.0.0 --activate
       - name: Install dependencies
@@ -49,6 +50,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@10.0.0 --activate
       - name: Install dependencies
@@ -86,10 +88,16 @@ jobs:
           retention-days: 7
       - name: Container logs on failure
         if: failure()
-        run: docker compose logs
+        run: |
+          if [[ -f .env ]]; then
+            docker compose logs
+          fi
       - name: Stop Yoppi
         if: always()
-        run: docker compose down
+        run: |
+          if [[ -f .env ]]; then
+            docker compose down
+          fi
 
   dependency-audit:
     runs-on: ubuntu-latest
@@ -98,6 +106,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@10.0.0 --activate
       - name: Install dependencies
