@@ -37,6 +37,9 @@ services:
 
   server:
     image: ${YOPPI_REGISTRY:?Set YOPPI_REGISTRY}/yoppi-server:${YOPPI_VERSION:?Set YOPPI_VERSION}
+    command:
+      - node
+      - apps/server/dist/server.js
     init: true
     read_only: true
     cap_drop:
