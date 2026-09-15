@@ -2,12 +2,19 @@
 set -euo pipefail
 
 VERSION=${1:-}
+MODE=${2:-}
 ENV_FILE=.env.production
 MIGRATION_ENV_FILE=.env.migration
 COMPOSE_FILE=docker-compose.deploy.yml
 
 if [[ -z "$VERSION" ]]; then
-  echo "usage: $0 <immutable-image-version>" >&2
+  echo "usage: $0 <immutable-image-version> [--skip-migrations]" >&2
+  exit 2
+fi
+
+if [[ -n "$MODE" && "$MODE" != "--skip-migrations" ]]; then
+  echo "invalid deployment mode: $MODE" >&2
+  echo "usage: $0 <immutable-image-version> [--skip-migrations]" >&2
   exit 2
 fi
 
@@ -21,7 +28,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 2
 fi
 
-if [[ ! -f "$MIGRATION_ENV_FILE" ]]; then
+if [[ "$MODE" != "--skip-migrations" && ! -f "$MIGRATION_ENV_FILE" ]]; then
   echo "missing migration environment: $MIGRATION_ENV_FILE" >&2
   exit 2
 fi
@@ -119,8 +126,12 @@ export YOPPI_VERSION="$VERSION"
 echo "Pulling Yoppi $YOPPI_VERSION"
 compose pull server web caddy
 
-echo "Applying database migrations with the dedicated migration credential"
-compose --profile migration run --rm --no-deps migrate
+if [[ "$MODE" == "--skip-migrations" ]]; then
+  echo "Skipping database migrations"
+else
+  echo "Applying database migrations with the dedicated migration credential"
+  compose --profile migration run --rm --no-deps migrate
+fi
 
 echo "Starting Yoppi $YOPPI_VERSION"
 compose up -d --remove-orphans

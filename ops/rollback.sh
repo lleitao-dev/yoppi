@@ -14,4 +14,4 @@ fi
 
 echo "Rolling Yoppi back to application image $VERSION"
 echo "Database changes are not reversed by this command."
-exec ./ops/deploy.sh "$VERSION"
+exec ./ops/deploy.sh "$VERSION" --skip-migrations

@@ -177,6 +177,8 @@ Database schema migrations are applied as a separate one-shot deployment operati
 
 The migration credential may alter the application schema and must not be exposed to the long-running server container. Application rollback does not reverse database migrations, so schema changes must remain compatible with the intended rollback target.
 
+`ops/rollback.sh` invokes the deployment path with `--skip-migrations`. A rollback changes application images only and never executes migrations from the older image.
+
 A database restore is a separate destructive operation and requires an explicit confirmation variable.
 
 ## Backups
