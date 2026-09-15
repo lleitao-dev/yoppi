@@ -9,8 +9,19 @@ fi
 
 BASE_URL=${BASE_URL%/}
 
-curl --fail --silent --show-error "$BASE_URL/api/v1/health" >/dev/null
-curl --fail --silent --show-error "$BASE_URL/api/v1/ready" >/dev/null
-curl --fail --silent --show-error "$BASE_URL/" >/dev/null
+check_url() {
+  curl \
+    --fail \
+    --silent \
+    --show-error \
+    --connect-timeout 5 \
+    --max-time 10 \
+    "$1" \
+    >/dev/null
+}
+
+check_url "$BASE_URL/api/v1/health"
+check_url "$BASE_URL/api/v1/ready"
+check_url "$BASE_URL/"
 
 echo "Yoppi smoke test passed: $BASE_URL"

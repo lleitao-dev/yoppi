@@ -1,4 +1,4 @@
-# Yoppi deployment baseline (v0.9)
+# Yoppi deployment baseline
 
 This directory defines the provider-neutral deployment model for Yoppi. It targets one Docker-capable Linux host for the application tier plus an external managed PostgreSQL database.
 
@@ -55,7 +55,7 @@ At minimum set:
 ```env
 YOPPI_DOMAIN=yoppi.example.com
 YOPPI_REGISTRY=ghcr.io/your-github-user-or-org
-YOPPI_VERSION=v0.9.0
+YOPPI_VERSION=v0.11.0
 DATABASE_URL=postgresql://...
 SESSION_SECRET=...
 ```
@@ -66,6 +66,23 @@ Generate a session secret with a cryptographically secure source, for example:
 openssl rand -base64 48
 ```
 
+Create `.env.migration` separately on the deployment host and restrict it to the
+deployment user:
+
+```bash
+chmod 600 .env.migration
+```
+
+It contains only the privileged database credential required for one-shot schema
+migrations:
+
+```env
+DATABASE_URL=postgresql://migration-user:password@managed-postgres.example.com:5432/yoppi?sslmode=require
+```
+
+Do not place the migration credential in `.env.production`. The long-running API
+container must use only the least-privileged runtime `DATABASE_URL`.
+
 The deployment host must be able to pull the configured GHCR packages. Public packages require no login. Private packages require a GHCR token with package-read permission:
 
 ```bash
@@ -75,7 +92,7 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 ## Release flow
 
 1. Merge only code that passes `.github/workflows/ci.yml`.
-2. Tag the release, for example `v0.9.0`.
+2. Tag the release with the exact immutable version being promoted.
 3. `.github/workflows/release-images.yml` verifies the repository and publishes immutable web/server images to GHCR.
 4. Deploy that exact image version to staging.
 5. Run multiplayer smoke/E2E testing against staging.
@@ -92,16 +109,26 @@ docker-compose.deploy.yml
 deploy/Caddyfile
 ops/
 .env.production
+.env.migration
 ```
 
 Then:
 
 ```bash
 chmod +x ops/*.sh
-./ops/deploy.sh v0.9.0
+./ops/deploy.sh v0.11.0
 ```
 
-The script pulls immutable images, starts the stack, and waits for:
+The deployment script:
+
+1. pulls the immutable application images;
+2. runs Prisma migrations in a one-shot `migrate` container using `.env.migration`;
+3. starts the long-running application stack;
+4. waits for local server/web health and the Caddy process;
+5. records the application release that is actually running;
+6. validates the public HTTPS health, readiness, and web endpoints.
+
+The public validation checks:
 
 ```text
 https://$YOPPI_DOMAIN/api/v1/health
@@ -109,7 +136,10 @@ https://$YOPPI_DOMAIN/api/v1/ready
 https://$YOPPI_DOMAIN/
 ```
 
-If a new version fails those checks and a previous successful version is recorded, the script attempts an automatic application-image rollback.
+A failure of local application health may trigger automatic application-image rollback
+when a previous successful version is recorded. A failure limited to public DNS, TLS,
+ACME, firewall, or reverse-proxy reachability fails the deployment gate but does not
+roll back otherwise healthy application containers.
 
 ## GitHub deployment environments
 
@@ -140,10 +170,12 @@ Rollback only changes application images:
 or explicitly:
 
 ```bash
-./ops/rollback.sh v0.8.1
+./ops/rollback.sh vX.Y.Z
 ```
 
-Prisma migrations are currently applied by the API container before startup. Therefore schema changes made before v1.0 should remain backward-compatible with at least the previous application release. An application rollback does not reverse database migrations.
+Database schema migrations are applied as a separate one-shot deployment operation using `.env.migration`. The long-running API container uses only the runtime database credential from `.env.production`.
+
+The migration credential may alter the application schema and must not be exposed to the long-running server container. Application rollback does not reverse database migrations, so schema changes must remain compatible with the intended rollback target.
 
 A database restore is a separate destructive operation and requires an explicit confirmation variable.
 
@@ -180,7 +212,7 @@ Alerts should at minimum cover:
 - sustained Socket.IO disconnect/error spikes
 - disk pressure on the application host
 
-The repository intentionally does not hard-code a commercial error-reporting/logging vendor in v0.9. A provider-specific integration can be added once the deployment provider is selected and its current offering is verified.
+The repository intentionally does not hard-code a commercial error-reporting/logging vendor. A provider-specific integration can be added once the deployment provider is selected and its current offering is verified.
 
 ## Deployment caveat: active games
 

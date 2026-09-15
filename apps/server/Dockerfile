@@ -41,4 +41,4 @@ RUN mkdir -p "$COREPACK_HOME" \
 COPY --from=build --chown=node:node /app /app
 USER node
 EXPOSE 4000
-CMD ["sh", "-c", "pnpm --filter @yoppi/server prisma:migrate:deploy && node apps/server/dist/server.js"]
+CMD ["node", "apps/server/dist/server.js"]

@@ -7,6 +7,34 @@ x-default-logging: &default-logging
     max-file: '5'
 
 services:
+  migrate:
+    profiles:
+      - migration
+    image: ${YOPPI_REGISTRY:?Set YOPPI_REGISTRY}/yoppi-server:${YOPPI_VERSION:?Set YOPPI_VERSION}
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 0.5
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+      - /home/node/.cache:rw,nosuid,nodev,size=64m,mode=0700,uid=1000,gid=1000
+    env_file:
+      - .env.migration
+    environment:
+      NODE_ENV: production
+    command:
+      - pnpm
+      - --filter
+      - '@yoppi/server'
+      - prisma:migrate:deploy
+    restart: 'no'
+    logging: *default-logging
+
   server:
     image: ${YOPPI_REGISTRY:?Set YOPPI_REGISTRY}/yoppi-server:${YOPPI_VERSION:?Set YOPPI_VERSION}
     init: true

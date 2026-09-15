@@ -15,3 +15,5 @@ backups/
 .yoppi-previous-release
 
 .env.backup
+
+.env.migration
