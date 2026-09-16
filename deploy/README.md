@@ -55,7 +55,7 @@ At minimum set:
 ```env
 YOPPI_DOMAIN=yoppi.example.com
 YOPPI_REGISTRY=ghcr.io/your-github-user-or-org
-YOPPI_VERSION=v0.11.0
+YOPPI_VERSION=v1.0.0
 DATABASE_URL=postgresql://...
 SESSION_SECRET=...
 ```
@@ -116,7 +116,7 @@ Then:
 
 ```bash
 chmod +x ops/*.sh
-./ops/deploy.sh v0.11.0
+./ops/deploy.sh v1.0.0
 ```
 
 The deployment script:
