@@ -124,39 +124,6 @@ test('two guests can play a Blackjack round in one room', async ({ browser }) =>
   }
 });
 
-async function completeRoundFromOneRemainingPage(page: Page): Promise<void> {
-  for (let action = 0; action < 4; action += 1) {
-    await expect
-      .poll(async () => {
-        if (
-          await page
-            .getByRole('heading', { name: 'Round complete' })
-            .isVisible()
-            .catch(() => false)
-        )
-          return 'complete';
-        if (
-          await page
-            .getByRole('button', { name: 'Stand' })
-            .isVisible()
-            .catch(() => false)
-        )
-          return 'stand';
-        return 'waiting';
-      })
-      .not.toBe('waiting');
-
-    if (
-      await page
-        .getByRole('heading', { name: 'Round complete' })
-        .isVisible()
-        .catch(() => false)
-    )
-      return;
-    await page.getByRole('button', { name: 'Stand' }).click();
-  }
-}
-
 test('active host transfers and the disconnected member can re-enter by code', async ({
   browser,
 }) => {
@@ -182,7 +149,7 @@ test('active host transfers and the disconnected member can re-enter by code', a
     await alice.close();
     await expect(bob.getByText(/Bob Transfer · host · playing · online/)).toBeVisible();
 
-    await completeRoundFromOneRemainingPage(bob);
+    await completeRoundForPages([bob]);
     await expect(bob.getByRole('button', { name: 'Next round' })).toBeVisible();
 
     const aliceReconnected = await aliceContext.newPage();
