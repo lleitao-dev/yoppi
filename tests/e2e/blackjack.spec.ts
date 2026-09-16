@@ -210,15 +210,19 @@ async function completeRoundForPages(pages: Page[]): Promise<void> {
 
     let acted = false;
     for (const page of pages) {
-      const stand = page.getByRole('button', { name: 'Stand' });
-      const actionable = await stand
-        .isVisible()
-        .then(async (visible) => visible && (await stand.isEnabled()))
-        .catch(() => false);
-      if (actionable) {
-        await stand.click();
+      const stand = page.locator('button:enabled').filter({ hasText: /^Stand$/ });
+      if ((await stand.count()) === 0) continue;
+
+      try {
+        await stand.click({ timeout: 1_000 });
         acted = true;
         break;
+      } catch {
+        const completed = await pages[0]
+          .getByRole('heading', { name: 'Round complete' })
+          .isVisible()
+          .catch(() => false);
+        if (completed) return;
       }
     }
 
