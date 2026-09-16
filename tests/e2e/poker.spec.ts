@@ -174,3 +174,146 @@ test('an active Poker room queues and admits a third player between hands', asyn
     await expect(charlie.getByRole('heading', { name: 'Charlie Poker Queue' })).toBeVisible();
   });
 });
+
+test('active Poker host transfers and the disconnected member can re-enter by code', async ({
+  browser,
+}) => {
+  const { aliceContext, bobContext, alice, bob } = await createTwoPlayers(browser);
+
+  try {
+    await enterGuest(alice, 'Alice Poker Transfer');
+    await openPoker(alice);
+    await alice.getByRole('button', { name: 'Create room' }).click({ timeout: 5_000 });
+    const roomCode = (await alice.getByTestId('room-code').textContent())?.trim();
+    expect(roomCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+
+    await enterGuest(bob, 'Bob Poker Transfer');
+    await openPoker(bob);
+    await bob.getByLabel('Room code').fill(roomCode!);
+    await bob.getByRole('button', { name: 'Join room' }).click({ timeout: 5_000 });
+    await expect(alice.getByText(/^2 connected · 2\/6 members$/)).toBeVisible();
+
+    await alice.getByRole('button', { name: "Start Texas Hold'em" }).click({ timeout: 5_000 });
+    await expect(alice.getByTestId('poker-table')).toBeVisible();
+    await expect(bob.getByTestId('poker-table')).toBeVisible();
+
+    await alice.close();
+
+    await expect(bob.getByText(/Bob Poker Transfer · host · playing · online/)).toBeVisible();
+    await expect(bob.getByText(/Alice Poker Transfer · playing · offline/)).toBeVisible();
+
+    const aliceReconnected = await aliceContext.newPage();
+    await aliceReconnected.goto('/games/poker');
+    await aliceReconnected.getByLabel('Room code').fill(roomCode!);
+    await aliceReconnected.getByRole('button', { name: 'Join room' }).click({ timeout: 5_000 });
+
+    await expect(aliceReconnected.getByText('Live table')).toBeVisible();
+    await expect(aliceReconnected.getByTestId('poker-table')).toBeVisible();
+    await expect(
+      aliceReconnected.getByText(/Alice Poker Transfer · playing · online/),
+    ).toBeVisible();
+    await expect(
+      aliceReconnected.getByText(/Bob Poker Transfer · host · playing · online/),
+    ).toBeVisible();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
+test('Poker returns to the waiting room after the minimum-player grace expires', async ({
+  browser,
+}) => {
+  test.setTimeout(45_000);
+
+  const { aliceContext, bobContext, alice, bob } = await createTwoPlayers(browser);
+
+  try {
+    await enterGuest(alice, 'Alice Poker Grace Expire');
+    await openPoker(alice);
+    await alice.getByRole('button', { name: 'Create room' }).click({ timeout: 5_000 });
+    const roomCode = (await alice.getByTestId('room-code').textContent())?.trim();
+    expect(roomCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+
+    await enterGuest(bob, 'Bob Poker Grace Expire');
+    await openPoker(bob);
+    await bob.getByLabel('Room code').fill(roomCode!);
+    await bob.getByRole('button', { name: 'Join room' }).click({ timeout: 5_000 });
+    await expect(alice.getByText(/^2 connected · 2\/6 members$/)).toBeVisible();
+
+    await alice.getByRole('button', { name: "Start Texas Hold'em" }).click({ timeout: 5_000 });
+    await expect(alice.getByText('Live table')).toBeVisible();
+    await expect(alice.getByTestId('poker-table')).toBeVisible();
+
+    await bob.close();
+
+    await expect(alice.getByText('Insufficient players')).toBeVisible();
+
+    await expect(alice.getByText('Waiting room')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const bobReconnected = await bobContext.newPage();
+    await bobReconnected.goto('/games/poker');
+    await bobReconnected.getByLabel('Room code').fill(roomCode!);
+    await bobReconnected.getByRole('button', { name: 'Join room' }).click({ timeout: 5_000 });
+
+    await expect(bobReconnected.getByText('Waiting room')).toBeVisible();
+    await expect(bobReconnected.getByRole('button', { name: "Start Texas Hold'em" })).toBeEnabled();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
+test('reconnecting before the grace deadline keeps the active Poker game alive', async ({
+  browser,
+}) => {
+  test.setTimeout(45_000);
+
+  const { aliceContext, bobContext, alice, bob } = await createTwoPlayers(browser);
+
+  try {
+    await enterGuest(alice, 'Alice Poker Grace Cancel');
+    await openPoker(alice);
+    await alice.getByRole('button', { name: 'Create room' }).click({ timeout: 5_000 });
+    const roomCode = (await alice.getByTestId('room-code').textContent())?.trim();
+    expect(roomCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+
+    await enterGuest(bob, 'Bob Poker Grace Cancel');
+    await openPoker(bob);
+    await bob.getByLabel('Room code').fill(roomCode!);
+    await bob.getByRole('button', { name: 'Join room' }).click({ timeout: 5_000 });
+    await expect(alice.getByText(/^2 connected · 2\/6 members$/)).toBeVisible();
+
+    await alice.getByRole('button', { name: "Start Texas Hold'em" }).click({ timeout: 5_000 });
+    await expect(alice.getByText('Live table')).toBeVisible();
+    await expect(alice.getByTestId('poker-table')).toBeVisible();
+
+    await bob.close();
+
+    await expect(alice.getByText('Insufficient players')).toBeVisible();
+
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+
+    const bobReconnected = await bobContext.newPage();
+    await bobReconnected.goto('/games/poker');
+    await bobReconnected.getByLabel('Room code').fill(roomCode!);
+    await bobReconnected.getByRole('button', { name: 'Join room' }).click({ timeout: 5_000 });
+
+    await expect(bobReconnected.getByText('Live table')).toBeVisible();
+    await expect(bobReconnected.getByTestId('poker-table')).toBeVisible();
+    await expect(
+      bobReconnected.getByText(/Bob Poker Grace Cancel · playing · online/),
+    ).toBeVisible();
+
+    await bobReconnected.waitForTimeout(14_000);
+
+    await expect(bobReconnected.getByText('Live table')).toBeVisible();
+    await expect(bobReconnected.getByText('Waiting room')).toHaveCount(0);
+    await expect(bobReconnected.getByTestId('poker-table')).toBeVisible();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
