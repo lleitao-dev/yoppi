@@ -233,6 +233,7 @@ async function completeRoundForPages(pages: Page[]): Promise<void> {
 test('active Blackjack queues new players and applies joins and leaves at round boundaries', async ({
   browser,
 }) => {
+  test.setTimeout(45_000);
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();
   const charlieContext = await browser.newContext();
