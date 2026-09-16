@@ -22,6 +22,11 @@ function gameLabel(gameType: RoomView['gameType']): string {
   return gameType === 'BLACKJACK' ? 'Blackjack' : "Texas Hold'em";
 }
 
+function acceptRoomUpdate(current: RoomView | null, next: RoomView): RoomView {
+  if (!current || current.id !== next.id) return next;
+  return next.revision > current.revision ? next : current;
+}
+
 export default function WaitingRoomPage() {
   const params = useParams<{ roomId: string }>();
   const router = useRouter();
@@ -43,7 +48,7 @@ export default function WaitingRoomPage() {
     ])
       .then(([roomResponse, sessionResponse]) => {
         if (!active) return;
-        setRoom(roomResponse.room);
+        setRoom((current) => acceptRoomUpdate(current, roomResponse.room));
         setPlayerId(sessionResponse.player.id);
       })
       .catch((caught) => {
@@ -58,7 +63,7 @@ export default function WaitingRoomPage() {
 
   useEffect(() => {
     const realtime = createSocket();
-    const updateRoom = (next: RoomView) => setRoom(next);
+    const updateRoom = (next: RoomView) => setRoom((current) => acceptRoomUpdate(current, next));
     const updateBlackjack = (next: BlackjackStateView) => setBlackjack(next);
     const updatePoker = (next: PokerStateView) => setPoker(next);
     const handleError = (next: ServerError) => setError(next.message);
